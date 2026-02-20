@@ -41,6 +41,17 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/firestore\.googleapis\.com/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'firestore-cache',
+              expiration: { maxAgeSeconds: 3600 },
+              networkTimeoutSeconds: 10,
+            },
+          },
+        ],
       },
     }),
   ],

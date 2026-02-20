@@ -1,34 +1,85 @@
-import { spots } from './data/spots';
-import { SpotCard } from './components/SpotCard';
+import { useForecast } from './hooks/useForecast';
+import { useConfig } from './hooks/useConfig';
+import { Header } from './components/Header';
+import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
+import type { SpotForecast } from './types/forecast';
+
+/**
+ * Sort spots by navigability score (navigable spots first).
+ * Today weighs 4x, tomorrow 2x, day after 1x.
+ */
+function sortByNavigability(spots: SpotForecast[]): SpotForecast[] {
+  return [...spots].sort((a, b) => {
+    const score = (s: SpotForecast) =>
+      (s.days[0]?.isNavigable ? 4 : 0) +
+      (s.days[1]?.isNavigable ? 2 : 0) +
+      (s.days[2]?.isNavigable ? 1 : 0);
+    return score(b) - score(a);
+  });
+}
 
 function App() {
+  const { data, loading, refreshing, refresh } = useForecast();
+  const { navigability, loading: configLoading } = useConfig();
+
+  const updatedAt = data?.updatedAt?.toMillis() ?? null;
+  const isLoading = loading || configLoading;
+
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      <header className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-emerald-400">
-            <path d="M4 12C4 8 8 4 12 4s8 4 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M4 18c0-3 3-6 8-6s8 3 8 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="12" cy="12" r="2" fill="currentColor" />
-          </svg>
-          <h1 className="text-xl font-bold tracking-tight">Windspotter</h1>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+      <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={refresh} />
 
       <main className="max-w-6xl mx-auto px-4 py-6">
-        <p className="text-slate-400 mb-6">
-          Real-time wind forecasts for wingfoil spots
-        </p>
+        {isLoading && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SpotCardSkeleton key={i} />
+            ))}
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {spots.map((spot) => (
-            <SpotCard key={spot.id} spot={spot} />
-          ))}
-        </div>
+        {!isLoading && !data && (
+          <div className="text-center py-16">
+            <p className="text-slate-500 dark:text-slate-400 mb-4">
+              Aucune donnée disponible
+            </p>
+            <button
+              onClick={refresh}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              Charger les prévisions
+            </button>
+          </div>
+        )}
+
+        {!isLoading && data && navigability && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {sortByNavigability(data.spots).map((spot) => (
+              <SpotCard key={spot.pointId} spot={spot} navigability={navigability} />
+            ))}
+          </div>
+        )}
       </main>
 
-      <footer className="max-w-6xl mx-auto px-4 py-6 text-center text-sm text-slate-600">
-        Data from <a href="https://open-meteo.com/" className="text-slate-400 hover:text-white transition-colors" target="_blank" rel="noreferrer">Open-Meteo</a>
+      <footer className="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-slate-400 dark:text-slate-500">
+        Données{' '}
+        <a
+          href="https://www.meteosuisse.admin.ch/"
+          className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          target="_blank"
+          rel="noreferrer"
+        >
+          MétéoSuisse
+        </a>
+        {' & '}
+        <a
+          href="https://www.alplakes.eawag.ch/"
+          className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Alplakes
+        </a>
       </footer>
     </div>
   );

@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Config: public read, admin SDK write only
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Forecasts: public read, admin SDK write only
+    match /forecasts/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Users (v2): authenticated user can read/write own data
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

@@ -1,99 +1,76 @@
-import type { Spot } from '../types/spot';
-import { useSpotForecast } from '../hooks/useSpotForecast';
-import { WindDirectionArrow } from './WindDirectionArrow';
+import type { SpotForecast, NavigabilityConfig } from '../types/forecast';
+import { DayForecast } from './DayForecast';
+import { dayLabel, lakeName } from '../utils/format';
 
 interface SpotCardProps {
-  spot: Spot;
+  spot: SpotForecast;
+  navigability: NavigabilityConfig;
 }
 
-function getWindColor(speed: number): string {
-  if (speed < 10) return 'text-gray-400';
-  if (speed < 15) return 'text-green-400';
-  if (speed < 25) return 'text-emerald-400';
-  if (speed < 35) return 'text-yellow-400';
-  if (speed < 45) return 'text-orange-400';
-  return 'text-red-400';
-}
-
-function getCurrentForecast(forecasts: { timestamp: string }[]) {
-  const now = new Date();
-  return forecasts.reduce((closest, f) => {
-    const diff = Math.abs(new Date(f.timestamp).getTime() - now.getTime());
-    const closestDiff = Math.abs(new Date(closest.timestamp).getTime() - now.getTime());
-    return diff < closestDiff ? f : closest;
-  }, forecasts[0]);
-}
-
-export function SpotCard({ spot }: SpotCardProps) {
-  const { forecasts, loading, error } = useSpotForecast(spot);
-
-  if (loading) {
-    return (
-      <div className="bg-slate-800 rounded-xl p-5 animate-pulse">
-        <div className="h-6 bg-slate-700 rounded w-2/3 mb-3" />
-        <div className="h-4 bg-slate-700 rounded w-1/2 mb-4" />
-        <div className="h-16 bg-slate-700 rounded" />
-      </div>
-    );
-  }
-
-  if (error || forecasts.length === 0) {
-    return (
-      <div className="bg-slate-800 rounded-xl p-5">
-        <h3 className="text-lg font-semibold text-white">{spot.name}</h3>
-        <p className="text-sm text-slate-400">{spot.location}</p>
-        <p className="text-red-400 mt-3 text-sm">
-          {error || 'No forecast data available'}
-        </p>
-      </div>
-    );
-  }
-
-  const current = getCurrentForecast(forecasts);
-  const typedCurrent = current as (typeof forecasts)[0];
+export function SpotCard({ spot, navigability }: SpotCardProps) {
+  // Show first 3 days
+  const displayDays = spot.days.slice(0, 3);
+  const hasNavigableDay = displayDays.some((d) => d.isNavigable);
 
   return (
-    <div className="bg-slate-800 rounded-xl p-5 hover:bg-slate-750 transition-colors">
-      <div className="flex items-start justify-between mb-3">
+    <div
+      className={`
+        bg-white dark:bg-slate-800 rounded-xl border transition-colors
+        ${hasNavigableDay
+          ? 'border-green-200 dark:border-green-500/30'
+          : 'border-slate-200 dark:border-slate-700'
+        }
+      `}
+    >
+      {/* Spot header */}
+      <div className="px-4 pt-4 pb-2 flex items-start justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-white">{spot.name}</h3>
-          <p className="text-sm text-slate-400">{spot.location}</p>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+            {spot.name}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {lakeName(spot.lake)}
+          </p>
         </div>
-        <WindDirectionArrow
-          degrees={typedCurrent.windDirection}
-          className={getWindColor(typedCurrent.windSpeed)}
-        />
+        {spot.waterTemp.current !== null && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10">
+            <span className="text-sm">🌊</span>
+            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+              {spot.waterTemp.current}°C
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mt-4">
-        <div className="text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Vent</p>
-          <p className={`text-2xl font-bold ${getWindColor(typedCurrent.windSpeed)}`}>
-            {Math.round(typedCurrent.windSpeed)}
-          </p>
-          <p className="text-xs text-slate-500">km/h</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Rafales</p>
-          <p className={`text-2xl font-bold ${getWindColor(typedCurrent.windGust)}`}>
-            {Math.round(typedCurrent.windGust)}
-          </p>
-          <p className="text-xs text-slate-500">km/h</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Temp</p>
-          <p className="text-2xl font-bold text-blue-300">
-            {Math.round(typedCurrent.temperature)}°
-          </p>
-          <p className="text-xs text-slate-500">°C</p>
-        </div>
-      </div>
+      {/* Day forecasts */}
+      <div className="px-4 pb-4 space-y-4">
+        {displayDays.map((day) => (
+          <DayForecast
+            key={day.date}
+            day={day}
+            label={dayLabel(day.date)}
+            navigability={navigability}
+          />
+        ))}
 
-      {spot.description && (
-        <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-700">
-          {spot.description}
-        </p>
-      )}
+        {displayDays.length === 0 && (
+          <p className="text-sm text-slate-400 py-4 text-center">
+            Aucune donnée disponible
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function SpotCardSkeleton() {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 animate-pulse">
+      <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-2/3 mb-2" />
+      <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3 mb-4" />
+      <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded mb-3" />
+      <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded mb-3" />
+      <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded" />
     </div>
   );
 }
