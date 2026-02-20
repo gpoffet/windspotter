@@ -1,0 +1,58 @@
+import type { Spot } from '../types/spot';
+
+export const spots: Spot[] = [
+  {
+    id: 'yvonand',
+    name: 'Yvonand',
+    location: 'Lac de Neuchâtel',
+    country: 'CH',
+    latitude: 46.8012,
+    longitude: 6.7418,
+    description: 'Spot populaire sur le lac de Neuchâtel, bon pour la bise.',
+  },
+  {
+    id: 'estavayer',
+    name: 'Estavayer-le-Lac',
+    location: 'Lac de Neuchâtel',
+    country: 'CH',
+    latitude: 46.8490,
+    longitude: 6.8460,
+    description: 'Plage d\'Estavayer, bien exposé au vent du sud-ouest.',
+  },
+  {
+    id: 'grandson',
+    name: 'Grandson',
+    location: 'Lac de Neuchâtel',
+    country: 'CH',
+    latitude: 46.8100,
+    longitude: 6.6460,
+    description: 'Bon spot pour la bise avec une longue plage.',
+  },
+  {
+    id: 'silvaplana',
+    name: 'Silvaplana',
+    location: 'Lac de Silvaplana, Engadine',
+    country: 'CH',
+    latitude: 46.4580,
+    longitude: 9.7950,
+    description: 'Le Maloja wind rend ce spot légendaire pour le foil.',
+  },
+  {
+    id: 'urner-see',
+    name: 'Urnersee (Flüelen)',
+    location: 'Lac des Quatre-Cantons',
+    country: 'CH',
+    latitude: 46.9060,
+    longitude: 8.6270,
+    description: 'Effet venturi puissant avec le Föhn.',
+  },
+  {
+    id: 'walensee',
+    name: 'Walensee',
+    location: 'Lac de Walenstadt',
+    country: 'CH',
+    latitude: 47.1210,
+    longitude: 9.2250,
+    description: 'Thermique fiable en été, bon spot de foil.',
+  },
+];
