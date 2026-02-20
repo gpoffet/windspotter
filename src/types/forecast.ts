@@ -4,11 +4,19 @@ export interface SpotConfig {
   id: string;
   name: string;
   pointId: string;
+  stationId: string;
   npa: number;
   lat: number;
   lon: number;
   lake: string;
   alplakesKey: string;
+}
+
+export interface CurrentWeather {
+  temp: number | null;
+  windSpeed: number | null;
+  windGust: number | null;
+  windDir: number | null;
 }
 
 export interface NavigabilityConfig {

@@ -15,6 +15,7 @@ interface WindChartProps {
   hourly: HourlyData[];
   slots: NavigableSlot[];
   navigability: NavigabilityConfig;
+  yAxisMax: number;
 }
 
 interface ChartEntry {
@@ -62,7 +63,7 @@ function GustBarWithArrow(props: any) {
   );
 }
 
-export function WindChart({ hourly, slots, navigability }: WindChartProps) {
+export function WindChart({ hourly, slots, navigability, yAxisMax }: WindChartProps) {
   const chartData: ChartEntry[] = hourly.map((h) => {
     const navigable = slots.some((s) => h.hour >= s.start && h.hour < s.end);
     return {
@@ -120,7 +121,7 @@ export function WindChart({ hourly, slots, navigability }: WindChartProps) {
           tick={{ fontSize: 10, fill: '#94a3b8' }}
           axisLine={false}
           tickLine={false}
-          domain={[0, 'auto']}
+          domain={[0, yAxisMax]}
         />
 
         {/* Navigable zone background — full height, subtle */}

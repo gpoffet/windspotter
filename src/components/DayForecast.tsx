@@ -6,9 +6,10 @@ interface DayForecastProps {
   day: DayForecastType;
   label: string;
   navigability: NavigabilityConfig;
+  yAxisMax: number;
 }
 
-export function DayForecast({ day, label, navigability }: DayForecastProps) {
+export function DayForecast({ day, label, navigability, yAxisMax }: DayForecastProps) {
   // Compute summary stats
   const maxSpeed = Math.max(...day.hourly.map((h) => h.speed));
   const maxGust = Math.max(...day.hourly.map((h) => h.gust));
@@ -45,7 +46,7 @@ export function DayForecast({ day, label, navigability }: DayForecastProps) {
 
       {/* Wind chart */}
       {day.hourly.length > 0 && (
-        <WindChart hourly={day.hourly} slots={day.slots} navigability={navigability} />
+        <WindChart hourly={day.hourly} slots={day.slots} navigability={navigability} yAxisMax={yAxisMax} />
       )}
     </div>
   );

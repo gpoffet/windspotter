@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
+import { useCurrentWeather } from './hooks/useCurrentWeather';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { calculateSlots } from './utils/navigability';
@@ -22,7 +23,7 @@ function sortByNavigability(spots: SpotForecast[]): SpotForecast[] {
 
 function App() {
   const { data, loading, refreshing, error, refresh, dismissError } = useForecast();
-  const { navigability, loading: configLoading } = useConfig();
+  const { spots: spotConfigs, navigability, loading: configLoading } = useConfig();
 
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
@@ -38,6 +39,35 @@ function App() {
       }),
     }));
   }, [data?.spots, navigability]);
+
+  // Map pointId → stationId from config so we can look up current weather per spot
+  const stationByPointId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of spotConfigs) map.set(s.pointId, s.stationId);
+    return map;
+  }, [spotConfigs]);
+
+  // Unique station IDs for the current weather hook
+  const stationIds = useMemo(
+    () => [...new Set(spotConfigs.map((s) => s.stationId))],
+    [spotConfigs],
+  );
+
+  const currentWeather = useCurrentWeather(stationIds);
+
+  // Global max gust across all spots/days so every chart shares the same Y scale
+  const globalMaxGust = useMemo(() => {
+    let max = 0;
+    for (const spot of enrichedSpots) {
+      for (const day of spot.days) {
+        for (const h of day.hourly) {
+          if (h.gust > max) max = h.gust;
+        }
+      }
+    }
+    // Round up to next multiple of 10 for a clean axis
+    return Math.ceil(max / 10) * 10;
+  }, [enrichedSpots]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -108,7 +138,14 @@ function App() {
         {!isLoading && data && navigability && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {sortByNavigability(enrichedSpots).map((spot) => (
-              <SpotCard key={spot.pointId} spot={spot} navigability={navigability} />
+              <SpotCard
+                key={spot.pointId}
+                spot={spot}
+                navigability={navigability}
+                yAxisMax={globalMaxGust}
+                currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
+                stationId={stationByPointId.get(spot.pointId) ?? null}
+              />
             ))}
           </div>
         )}

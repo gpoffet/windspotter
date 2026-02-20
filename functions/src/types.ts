@@ -4,6 +4,7 @@ export interface SpotConfig {
   id: string;
   name: string;
   pointId: string;
+  stationId: string;
   npa: number;
   lat: number;
   lon: number;
