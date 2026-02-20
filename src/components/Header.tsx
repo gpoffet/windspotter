@@ -1,4 +1,6 @@
 import { relativeTime } from '../utils/format';
+import logoLight from '../assets/logo-full-light.svg';
+import logoDark from '../assets/logo-full-dark.svg';
 
 interface HeaderProps {
   updatedAt: number | null; // timestamp in ms
@@ -10,16 +12,10 @@ export function Header({ updatedAt, refreshing, onRefresh }: HeaderProps) {
   return (
     <header className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-teal-500">
-            <path d="M4 12C4 8 8 4 12 4s8 4 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M4 18c0-3 3-6 8-6s8 3 8 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="12" cy="12" r="2" fill="currentColor" />
-          </svg>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Windspotter
-          </h1>
-        </div>
+        <h1>
+          <img src={logoLight} alt="Windspotter" className="h-9 dark:hidden" />
+          <img src={logoDark} alt="Windspotter" className="h-9 hidden dark:block" />
+        </h1>
 
         <div className="flex items-center gap-3">
           {updatedAt && (

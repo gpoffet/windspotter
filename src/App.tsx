@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
+import { calculateSlots } from './utils/navigability';
 import type { SpotForecast } from './types/forecast';
 
 /**
@@ -19,22 +21,73 @@ function sortByNavigability(spots: SpotForecast[]): SpotForecast[] {
 }
 
 function App() {
-  const { data, loading, refreshing, refresh } = useForecast();
+  const { data, loading, refreshing, error, refresh, dismissError } = useForecast();
   const { navigability, loading: configLoading } = useConfig();
 
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
+
+  // Compute navigable slots client-side (enables future per-user thresholds)
+  const enrichedSpots = useMemo(() => {
+    if (!data?.spots || !navigability) return [];
+    return data.spots.map((spot) => ({
+      ...spot,
+      days: spot.days.map((day) => {
+        const slots = calculateSlots(day.hourly, navigability);
+        return { ...day, slots, isNavigable: slots.length > 0 };
+      }),
+    }));
+  }, [data?.spots, navigability]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
       <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={refresh} />
 
       <main className="max-w-6xl mx-auto px-4 py-6">
+        {/* Refresh banner */}
+        {refreshing && data && (
+          <div className="mb-4 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal-50 dark:bg-teal-500/10 text-teal-700 dark:text-teal-300 text-sm">
+            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 11-3-6.7" strokeLinecap="round" />
+            </svg>
+            Mise à jour des prévisions en cours...
+          </div>
+        )}
+
+        {/* Error banner */}
+        {error && (
+          <div className="mb-4 flex items-center justify-between gap-2 px-4 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 text-sm">
+            <span>{error}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={refresh}
+                className="px-3 py-1 rounded-md bg-red-100 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 transition-colors text-xs font-medium"
+              >
+                Réessayer
+              </button>
+              <button
+                onClick={dismissError}
+                className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors"
+                aria-label="Fermer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
         {isLoading && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SpotCardSkeleton key={i} />
-            ))}
+          <div>
+            <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Chargement des prévisions...
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SpotCardSkeleton key={i} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -53,8 +106,8 @@ function App() {
         )}
 
         {!isLoading && data && navigability && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {sortByNavigability(data.spots).map((spot) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {sortByNavigability(enrichedSpots).map((spot) => (
               <SpotCard key={spot.pointId} spot={spot} navigability={navigability} />
             ))}
           </div>

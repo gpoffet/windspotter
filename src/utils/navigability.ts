@@ -1,5 +1,5 @@
-import { dirText } from './utils.js';
-import type { HourlyData, NavigableSlot, NavigabilityConfig } from './types.js';
+import { dirText } from './windDirection';
+import type { HourlyData, NavigableSlot, NavigabilityConfig } from '../types/forecast';
 
 /**
  * Calculate navigable slots for a day's hourly data using the given config.
@@ -9,7 +9,6 @@ export function calculateSlots(
   hourly: HourlyData[],
   config: NavigabilityConfig,
 ): NavigableSlot[] {
-  // Filter to the configured time window
   const validHours = hourly.filter(
     (h) => h.hour >= config.dayStartHour && h.hour < config.dayEndHour,
   );
@@ -35,7 +34,6 @@ export function calculateSlots(
     }
   }
 
-  // Handle run ending at end of valid window
   if (runHours.length >= config.minConsecutiveHours) {
     slots.push(buildSlot(runStart, runHours));
   }
@@ -43,9 +41,6 @@ export function calculateSlots(
   return slots;
 }
 
-/**
- * Build a NavigableSlot from a consecutive run of navigable hours.
- */
 function buildSlot(startHour: number, hours: HourlyData[]): NavigableSlot {
   const avgSpeed = Math.round(
     hours.reduce((sum, h) => sum + h.speed, 0) / hours.length,
@@ -53,8 +48,6 @@ function buildSlot(startHour: number, hours: HourlyData[]): NavigableSlot {
   const avgGust = Math.round(
     hours.reduce((sum, h) => sum + h.gust, 0) / hours.length,
   );
-
-  // Dominant direction: average of direction vectors
   const avgDir = averageDirection(hours.map((h) => h.dir));
 
   return {
@@ -67,10 +60,6 @@ function buildSlot(startHour: number, hours: HourlyData[]): NavigableSlot {
   };
 }
 
-/**
- * Compute the average wind direction using vector averaging.
- * This correctly handles wrap-around (e.g. 350° and 10° → 0°).
- */
 function averageDirection(directions: number[]): number {
   let sinSum = 0;
   let cosSum = 0;

@@ -1,0 +1,24 @@
+<svg width="280" height="60" viewBox="0 0 280 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pinGrad" x1="8" y1="0" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="100%" stop-color="#115e59"/>
+    </linearGradient>
+    <clipPath id="pinClip">
+      <path d="M28 2 C40 2 50 12 50 24 C50 36 28 56 28 56 C28 56 6 36 6 24 C6 12 16 2 28 2Z"/>
+    </clipPath>
+  </defs>
+  <path d="M28 2 C40 2 50 12 50 24 C50 36 28 56 28 56 C28 56 6 36 6 24 C6 12 16 2 28 2Z" fill="url(#pinGrad)" opacity="0.1"/>
+  <path d="M28 2 C40 2 50 12 50 24 C50 36 28 56 28 56 C28 56 6 36 6 24 C6 12 16 2 28 2Z" fill="none" stroke="url(#pinGrad)" stroke-width="2.5"/>
+  <g clip-path="url(#pinClip)">
+    <path d="M10 15 C16 12, 22 15, 28 12 C34 9, 40 13, 46 11" stroke="#0d9488" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+    <path d="M8 22 C15 25, 22 20, 30 22 C38 24, 42 19, 50 21" stroke="#14b8a6" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.6"/>
+    <path d="M10 29 C17 26, 24 30, 32 27 C38 25, 44 28, 50 27" stroke="#5eead4" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.4"/>
+    <path d="M6 35 C12 32, 18 37, 24 34 C30 31, 36 36, 42 33 C48 30, 50 34, 54 32" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.25"/>
+  </g>
+  <circle cx="28" cy="22" r="4" fill="#0d9488" opacity="0.2"/>
+  <circle cx="28" cy="22" r="2" fill="#0d9488"/>
+  <text x="64" y="30" font-family="'Sora', sans-serif" font-weight="800" font-size="26" fill="#0f172a" letter-spacing="-0.5">Wind</text>
+  <text x="130" y="30" font-family="'Sora', sans-serif" font-weight="600" font-size="26" fill="#0f766e" letter-spacing="-0.5">spotter</text>
+  <text x="64" y="46" font-family="'Sora', sans-serif" font-weight="500" font-size="9" fill="#94a3b8" letter-spacing="2">FIND YOUR WIND</text>
+</svg>

@@ -10,7 +10,9 @@ interface UseForecastResult {
   data: ForecastData | null;
   loading: boolean;
   refreshing: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
+  dismissError: () => void;
 }
 
 export function useForecast(): UseForecastResult {
@@ -18,20 +20,35 @@ export function useForecast(): UseForecastResult {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const dismissError = useCallback(() => setError(null), []);
 
   const triggerRefresh = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
+    setError(null);
     try {
       const refreshFn = httpsCallable(functions, 'refreshForecast');
       await refreshFn();
       // onSnapshot will automatically pick up the new data
     } catch (err) {
       console.error('Failed to refresh forecast:', err);
+      const age = data?.updatedAt ? Date.now() - data.updatedAt.toMillis() : null;
+      const ageText = age !== null
+        ? age < 60 * 60 * 1000
+          ? `${Math.round(age / 60000)} min`
+          : `${Math.round(age / 3600000)}h`
+        : null;
+      setError(
+        ageText
+          ? `Erreur de mise à jour — les données affichées datent de ${ageText}`
+          : 'Erreur de mise à jour des prévisions',
+      );
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing]);
+  }, [refreshing, data]);
 
   useEffect(() => {
     const docRef = doc(db, 'forecasts', 'latest');
@@ -72,5 +89,5 @@ export function useForecast(): UseForecastResult {
     }
   }, [needsRefresh, refreshing, triggerRefresh]);
 
-  return { data, loading, refreshing, refresh: triggerRefresh };
+  return { data, loading, refreshing, error, refresh: triggerRefresh, dismissError };
 }

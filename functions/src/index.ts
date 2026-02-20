@@ -3,7 +3,6 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { fetchAllMeteoData, type MergedData } from './meteo.js';
 import { fetchAllWaterTemps } from './alplakes.js';
-import { calculateSlots } from './navigability.js';
 import { parseCsvTimestamp, toZurichDateStr, toLocalHour, dirText } from './utils.js';
 import type {
   SpotConfig,
@@ -143,21 +142,20 @@ function buildSpotForecast(
   const days: DayForecast[] = sortedDates.map((date) => {
     const hourly = dayMap.get(date)!.sort((a, b) => a.hour - b.hour);
 
-    // Filter to display window for slot calculation
-    const slots = calculateSlots(hourly, navConfig);
-
-    // Sum sunshine (minutes) for hours in the day window, convert to hours
+    // Filter to display window
     const dayWindowHours = hourly.filter(
       (h) => h.hour >= navConfig.dayStartHour && h.hour < navConfig.dayEndHour,
     );
+
+    // Sum sunshine (minutes) for hours in the day window, convert to hours
     const sunshineMinutes = dayWindowHours.reduce((sum, h) => sum + h.sun, 0);
     const sunshine = Math.round((sunshineMinutes / 60) * 10) / 10;
 
     return {
       date,
       sunshine,
-      isNavigable: slots.length > 0,
-      slots,
+      isNavigable: false,
+      slots: [],
       hourly: dayWindowHours,
     };
   });
