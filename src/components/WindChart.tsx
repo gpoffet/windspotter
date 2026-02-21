@@ -16,6 +16,7 @@ interface WindChartProps {
   slots: NavigableSlot[];
   navigability: NavigabilityConfig;
   yAxisMax: number;
+  currentHour?: number | null;
 }
 
 interface ChartEntry {
@@ -63,7 +64,7 @@ function GustBarWithArrow(props: any) {
   );
 }
 
-export function WindChart({ hourly, slots, navigability, yAxisMax }: WindChartProps) {
+export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour }: WindChartProps) {
   const chartData: ChartEntry[] = hourly.map((h) => {
     const navigable = slots.some((s) => h.hour >= s.start && h.hour < s.end);
     return {
@@ -79,7 +80,7 @@ export function WindChart({ hourly, slots, navigability, yAxisMax }: WindChartPr
 
   return (
     <ResponsiveContainer width="100%" height={140}>
-      <BarChart data={chartData} margin={{ top: 18, right: 0, bottom: 6, left: -25 }}>
+      <BarChart data={chartData} margin={{ top: 18, right: 20, bottom: 6, left: -25 }}>
         <XAxis
           dataKey="label"
           tick={({ x, y, payload }: any) => {
@@ -136,18 +137,28 @@ export function WindChart({ hourly, slots, navigability, yAxisMax }: WindChartPr
           />
         ))}
 
+        {/* Current hour marker */}
+        {currentHour != null && chartData.some((d) => d.hour === currentHour) && (
+          <ReferenceLine
+            x={String(currentHour)}
+            stroke="#ef4444"
+            strokeWidth={2}
+            strokeDasharray="4 2"
+          />
+        )}
+
         {/* Threshold lines */}
         <ReferenceLine
           y={navigability.windSpeedMin}
           stroke="#10b981"
           strokeDasharray="4 4"
-          label={{ value: String(navigability.windSpeedMin), position: 'left', fontSize: 10, fill: '#10b981' }}
+          label={{ value: String(navigability.windSpeedMin), position: 'right', fontSize: 10, fill: '#10b981' }}
         />
         <ReferenceLine
           y={navigability.gustMin}
           stroke="#f59e0b"
           strokeDasharray="4 4"
-          label={{ value: String(navigability.gustMin), position: 'left', fontSize: 10, fill: '#f59e0b' }}
+          label={{ value: String(navigability.gustMin), position: 'right', fontSize: 10, fill: '#f59e0b' }}
         />
 
         {/* Stacked bars: wind + extra gust (top bar renders arrows) */}

@@ -10,6 +10,11 @@ interface DayForecastProps {
 }
 
 export function DayForecast({ day, label, navigability, yAxisMax }: DayForecastProps) {
+  // Check if this day is today and compute current hour
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const currentHour = day.date === todayStr ? now.getHours() : null;
+
   // Compute summary stats
   const maxSpeed = Math.max(...day.hourly.map((h) => h.speed));
   const maxGust = Math.max(...day.hourly.map((h) => h.gust));
@@ -46,7 +51,7 @@ export function DayForecast({ day, label, navigability, yAxisMax }: DayForecastP
 
       {/* Wind chart */}
       {day.hourly.length > 0 && (
-        <WindChart hourly={day.hourly} slots={day.slots} navigability={navigability} yAxisMax={yAxisMax} />
+        <WindChart hourly={day.hourly} slots={day.slots} navigability={navigability} yAxisMax={yAxisMax} currentHour={currentHour} />
       )}
     </div>
   );

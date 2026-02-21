@@ -48,8 +48,10 @@ function WindArrow({ dir }: { dir: number }) {
 }
 
 export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId }: SpotCardProps) {
-  // Show first 3 days
-  const displayDays = spot.days.slice(0, 3);
+  // Show today + future days only
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const displayDays = spot.days.filter((d) => d.date >= todayStr);
   const hasNavigableDay = displayDays.some((d) => d.isNavigable);
 
   return (
