@@ -68,17 +68,27 @@ function SettingsTab({ open }: { open: boolean }) {
   const [gustMin, setGustMin] = useState(25);
   const [dayStartHour, setDayStartHour] = useState(7);
   const [dayEndHour, setDayEndHour] = useState(20);
+  const [notificationHour, setNotificationHour] = useState(8);
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    getDoc(doc(db, 'config', 'navigability')).then((snap) => {
-      if (snap.exists()) {
-        const data = snap.data() as NavigabilityConfig;
+    setTestResult(null);
+    Promise.all([
+      getDoc(doc(db, 'config', 'navigability')),
+      getDoc(doc(db, 'config', 'notifications')),
+    ]).then(([navSnap, notifSnap]) => {
+      if (navSnap.exists()) {
+        const data = navSnap.data() as NavigabilityConfig;
         setWindSpeedMin(data.windSpeedMin);
         setGustMin(data.gustMin);
         setDayStartHour(data.dayStartHour);
         setDayEndHour(data.dayEndHour);
+      }
+      if (notifSnap.exists()) {
+        setNotificationHour(notifSnap.data().hour ?? 8);
       }
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -89,17 +99,35 @@ function SettingsTab({ open }: { open: boolean }) {
     try {
       const snap = await getDoc(doc(db, 'config', 'navigability'));
       const existing = snap.exists() ? snap.data() as NavigabilityConfig : {};
-      await setDoc(doc(db, 'config', 'navigability'), {
-        ...existing,
-        windSpeedMin,
-        gustMin,
-        dayStartHour,
-        dayEndHour,
-      });
+      await Promise.all([
+        setDoc(doc(db, 'config', 'navigability'), {
+          ...existing,
+          windSpeedMin,
+          gustMin,
+          dayStartHour,
+          dayEndHour,
+        }),
+        setDoc(doc(db, 'config', 'notifications'), { hour: notificationHour }),
+      ]);
     } catch (err) {
       console.error('Failed to save config:', err);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestNotification() {
+    setSendingTest(true);
+    setTestResult(null);
+    try {
+      const fn = httpsCallable(functions, 'sendTestNotification');
+      await fn();
+      setTestResult({ ok: true, msg: 'Notification envoyée !' });
+    } catch (err: unknown) {
+      const message = (err as { message?: string }).message || 'Erreur inconnue';
+      setTestResult({ ok: false, msg: message });
+    } finally {
+      setSendingTest(false);
     }
   }
 
@@ -167,6 +195,23 @@ function SettingsTab({ open }: { open: boolean }) {
         <p className="mt-1 text-xs text-slate-400">{dayEndHour}h00</p>
       </div>
 
+      {/* Notification hour */}
+      <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+        <label className={labelClass}>Heure de notification matinale</label>
+        <select
+          value={notificationHour}
+          onChange={(e) => setNotificationHour(Number(e.target.value))}
+          className={inputClass}
+        >
+          {[6, 7, 8, 9].map((h) => (
+            <option key={h} value={h}>{h}h00</option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-slate-400">
+          Heure d'envoi des notifications push aux utilisateurs abonnés
+        </p>
+      </div>
+
       <button
         onClick={handleSave}
         disabled={saving}
@@ -174,6 +219,26 @@ function SettingsTab({ open }: { open: boolean }) {
       >
         {saving ? 'Enregistrement...' : 'Enregistrer'}
       </button>
+
+      {/* Test notification */}
+      <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+        <button
+          onClick={handleTestNotification}
+          disabled={sendingTest}
+          className="w-full py-2.5 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 01-3.46 0" />
+          </svg>
+          {sendingTest ? 'Envoi...' : 'Envoyer une notification de test'}
+        </button>
+        {testResult && (
+          <p className={`mt-2 text-xs ${testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+            {testResult.msg}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
