@@ -234,6 +234,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 Les notifications sont bloquées. Active-les dans les paramètres de ton navigateur.
               </p>
             )}
+            {notifications.error && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+                {notifications.error}
+              </p>
+            )}
           </div>
         )}
 

@@ -3,7 +3,7 @@ import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -14,8 +14,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return output;
 }
 
-/** Get the active SW registration, with a timeout to avoid hanging forever (e.g. in dev mode). */
-function getRegistration(timeoutMs = 3000): Promise<ServiceWorkerRegistration | null> {
+/** Get the active SW registration, with a timeout to avoid hanging forever. */
+function getRegistration(timeoutMs = 5000): Promise<ServiceWorkerRegistration | null> {
   return Promise.race([
     navigator.serviceWorker.ready,
     new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
@@ -23,30 +23,31 @@ function getRegistration(timeoutMs = 3000): Promise<ServiceWorkerRegistration | 
 }
 
 interface UseNotificationsResult {
-  /** Browser supports push notifications */
   supported: boolean;
-  /** Current Notification permission state */
   permission: NotificationPermission | null;
-  /** User has an active push subscription */
   enabled: boolean;
-  /** Loading initial state */
   loading: boolean;
-  /** Enable push notifications */
+  error: string | null;
   enable: () => Promise<void>;
-  /** Disable push notifications */
   disable: () => Promise<void>;
 }
 
 export function useNotifications(): UseNotificationsResult {
   const { user } = useAuth();
   const [supported] = useState(
-    () => typeof window !== 'undefined' && 'PushManager' in window && 'serviceWorker' in navigator,
+    () =>
+      typeof window !== 'undefined' &&
+      'PushManager' in window &&
+      'serviceWorker' in navigator &&
+      'Notification' in window &&
+      !!VAPID_PUBLIC_KEY,
   );
   const [permission, setPermission] = useState<NotificationPermission | null>(
     () => (typeof Notification !== 'undefined' ? Notification.permission : null),
   );
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Check existing subscription on mount
   useEffect(() => {
@@ -58,41 +59,71 @@ export function useNotifications(): UseNotificationsResult {
 
     getRegistration()
       .then((reg) => (reg ? reg.pushManager.getSubscription() : null))
-      .then((sub) => setEnabled(sub !== null))
+      .then((sub) => {
+        setEnabled(sub !== null);
+      })
       .catch(() => setEnabled(false))
       .finally(() => setLoading(false));
   }, [supported, user]);
 
   const enable = useCallback(async () => {
-    if (!supported || !user) return;
+    if (!supported || !user || !VAPID_PUBLIC_KEY) return;
+    setError(null);
 
-    const result = await Notification.requestPermission();
-    setPermission(result);
-    if (result !== 'granted') return;
-
-    const registration = await getRegistration();
-    if (!registration) {
-      console.error('useNotifications: no active service worker');
+    // Step 1: Request permission
+    let perm: NotificationPermission;
+    try {
+      perm = await Notification.requestPermission();
+    } catch {
+      setError('Impossible de demander la permission.');
       return;
     }
 
-    const keyArray = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: keyArray.buffer as ArrayBuffer,
-    });
+    setPermission(perm);
+    if (perm !== 'granted') {
+      setError('Permission refusée.');
+      return;
+    }
 
-    // Store subscription in Firestore
-    await setDoc(doc(db, 'pushSubscriptions', user.uid), {
-      subscription: subscription.toJSON(),
-      updatedAt: new Date(),
-    });
+    // Step 2: Get service worker
+    const registration = await getRegistration();
+    if (!registration) {
+      setError('Service worker non disponible.');
+      return;
+    }
+
+    // Step 3: Subscribe to push
+    let subscription: PushSubscription;
+    try {
+      const appServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: appServerKey.buffer as ArrayBuffer,
+      });
+    } catch (err) {
+      console.error('pushManager.subscribe failed:', err);
+      setError(`Échec de l'abonnement push: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    // Step 4: Store in Firestore
+    try {
+      await setDoc(doc(db, 'pushSubscriptions', user.uid), {
+        subscription: subscription.toJSON(),
+        updatedAt: new Date(),
+      });
+    } catch (err) {
+      console.error('Firestore write failed:', err);
+      setError('Impossible de sauvegarder l\'abonnement.');
+      return;
+    }
 
     setEnabled(true);
   }, [supported, user]);
 
   const disable = useCallback(async () => {
     if (!supported || !user) return;
+    setError(null);
 
     try {
       const registration = await getRegistration();
@@ -106,7 +137,6 @@ export function useNotifications(): UseNotificationsResult {
       // Ignore unsubscribe errors
     }
 
-    // Remove from Firestore
     try {
       await deleteDoc(doc(db, 'pushSubscriptions', user.uid));
     } catch {
@@ -116,5 +146,5 @@ export function useNotifications(): UseNotificationsResult {
     setEnabled(false);
   }, [supported, user]);
 
-  return { supported, permission, enabled, loading, enable, disable };
+  return { supported, permission, enabled, loading, error, enable, disable };
 }
