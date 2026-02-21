@@ -1,6 +1,7 @@
 import { relativeTime } from '../utils/format';
 import logoLight from '../assets/logo-full-light.svg';
 import logoDark from '../assets/logo-full-dark.svg';
+import { SettingsButton } from './SettingsButton';
 
 interface HeaderProps {
   updatedAt: number | null; // timestamp in ms
@@ -44,6 +45,7 @@ export function Header({ updatedAt, refreshing, onRefresh }: HeaderProps) {
               <path d="M21 3v6h-6" />
             </svg>
           </button>
+          <SettingsButton />
         </div>
       </div>
     </header>

@@ -8,6 +8,7 @@ interface SpotCardProps {
   yAxisMax: number;
   currentWeather: CurrentWeather | null;
   stationId: string | null;
+  forecastDays: number;
 }
 
 /** SMN station metadata for tooltip display */
@@ -47,11 +48,11 @@ function WindArrow({ dir }: { dir: number }) {
   );
 }
 
-export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId }: SpotCardProps) {
+export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays }: SpotCardProps) {
   // Show today + future days only
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const displayDays = spot.days.filter((d) => d.date >= todayStr).slice(0, 2);
+  const displayDays = spot.days.filter((d) => d.date >= todayStr).slice(0, forecastDays);
   const hasNavigableDay = displayDays.some((d) => d.isNavigable);
 
   return (

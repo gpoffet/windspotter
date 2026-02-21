@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
 import { useCurrentWeather } from './hooks/useCurrentWeather';
+import { useEffectiveConfig } from './hooks/useEffectiveConfig';
+import { useAuth } from './contexts/AuthContext';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { calculateSlots } from './utils/navigability';
@@ -23,12 +25,15 @@ function sortByNavigability(spots: SpotForecast[]): SpotForecast[] {
 
 function App() {
   const { data, loading, refreshing, error, refresh, dismissError } = useForecast();
-  const { spots: spotConfigs, navigability, loading: configLoading } = useConfig();
+  const { spots: spotConfigs, navigability: globalNavigability, loading: configLoading } = useConfig();
+  const navigability = useEffectiveConfig(globalNavigability);
+  const { preferences } = useAuth();
+  const forecastDays = preferences?.forecastDays ?? 2;
 
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
 
-  // Compute navigable slots client-side (enables future per-user thresholds)
+  // Compute navigable slots client-side with per-user thresholds
   const enrichedSpots = useMemo(() => {
     if (!data?.spots || !navigability) return [];
     return data.spots.map((spot) => ({
@@ -145,6 +150,7 @@ function App() {
                 yAxisMax={globalMaxGust}
                 currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
                 stationId={stationByPointId.get(spot.pointId) ?? null}
+                forecastDays={forecastDays}
               />
             ))}
           </div>
