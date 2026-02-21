@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfig } from '../hooks/useConfig';
+import { useNotifications } from '../hooks/useNotifications';
 import { Modal } from './Modal';
 import { AdminModal } from './AdminModal';
 import { DEFAULT_USER_PREFERENCES } from '../types/user';
@@ -25,6 +26,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [selectedSpots, setSelectedSpots] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const notifications = useNotifications();
+  const [togglingNotif, setTogglingNotif] = useState(false);
 
   useEffect(() => {
     if (open && preferences) {
@@ -183,6 +186,56 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
           )}
         </div>
+
+        {/* Notifications */}
+        {notifications.supported && (
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Notifications matinales
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Reçois une alerte chaque matin si du vent est prévu
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notifications.enabled}
+                disabled={togglingNotif || notifications.loading}
+                onClick={async () => {
+                  setTogglingNotif(true);
+                  try {
+                    if (notifications.enabled) {
+                      await notifications.disable();
+                    } else {
+                      await notifications.enable();
+                    }
+                  } catch (err) {
+                    console.error('Notification toggle error:', err);
+                  } finally {
+                    setTogglingNotif(false);
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 ${
+                  notifications.enabled ? 'bg-teal-600' : 'bg-slate-300 dark:bg-slate-600'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    notifications.enabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+            {notifications.permission === 'denied' && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                Les notifications sont bloquées. Active-les dans les paramètres de ton navigateur.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="space-y-3 pt-2">

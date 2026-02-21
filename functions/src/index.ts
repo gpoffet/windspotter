@@ -15,6 +15,9 @@ import type {
 // Admin functions
 export { listUsers, deleteUser } from './admin.js';
 
+// Scheduled notifications
+export { sendDailyNotifications } from './notifications.js';
+
 initializeApp();
 const db = getFirestore();
 

@@ -9,6 +9,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.svg', 'favicon-32.png', 'pwa-192x192.png'],
       manifest: {
         name: 'Windspotter',
@@ -45,20 +48,8 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        clientsClaim: true,
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/firestore\.googleapis\.com/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'firestore-cache',
-              expiration: { maxAgeSeconds: 3600 },
-              networkTimeoutSeconds: 10,
-            },
-          },
-        ],
       },
     }),
   ],
