@@ -18,7 +18,6 @@ interface WindChartProps {
   navigability: NavigabilityConfig;
   yAxisMax: number;
   currentHour?: number | null;
-  currentMinute?: number;
 }
 
 interface ChartEntry {
@@ -67,7 +66,7 @@ function GustBarWithArrow(props: any) {
   );
 }
 
-export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour, currentMinute = 0 }: WindChartProps) {
+export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour }: WindChartProps) {
   const chartData = useMemo<ChartEntry[]>(() => hourly.map((h) => {
     const navigable = slots.some((s) => h.hour >= s.start && h.hour < s.end);
     return {
@@ -173,7 +172,7 @@ export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour, 
             stroke="#ef4444"
             strokeWidth={2}
             strokeDasharray="4 2"
-            isFront
+            ifOverflow="extendDomain"
           />
         )}
 
