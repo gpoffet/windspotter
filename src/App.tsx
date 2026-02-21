@@ -8,6 +8,7 @@ import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { AuthModal } from './components/AuthModal';
 import { SettingsModal } from './components/SettingsModal';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { calculateSlots } from './utils/navigability';
 import type { SpotForecast } from './types/forecast';
 
@@ -191,6 +192,8 @@ function App() {
           </div>
         )}
       </main>
+
+      <UpdatePrompt />
 
       <footer className="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-slate-400 dark:text-slate-500">
         Données{' '}
