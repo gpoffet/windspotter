@@ -14,6 +14,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
 
   useEffect(() => {
@@ -21,20 +22,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       if (firebaseUser) {
         try {
-          const prefsDoc = await getDoc(
-            doc(db, 'users', firebaseUser.uid, 'settings', 'preferences'),
-          );
+          const [prefsDoc, tokenResult] = await Promise.all([
+            getDoc(doc(db, 'users', firebaseUser.uid, 'settings', 'preferences')),
+            firebaseUser.getIdTokenResult(),
+          ]);
           if (prefsDoc.exists()) {
             setPreferences(prefsDoc.data() as UserPreferences);
           } else {
             setPreferences(DEFAULT_USER_PREFERENCES);
           }
+          setIsAdmin(tokenResult.claims.admin === true);
         } catch (err) {
           console.error('Failed to load user preferences:', err);
           setPreferences(DEFAULT_USER_PREFERENCES);
+          setIsAdmin(false);
         }
       } else {
         setPreferences(null);
+        setIsAdmin(false);
       }
       setLoading(false);
     });
@@ -64,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, preferences, updatePreferences, signOut: handleSignOut }}
+      value={{ user, loading, isAdmin, preferences, updatePreferences, signOut: handleSignOut }}
     >
       {children}
     </AuthContext.Provider>

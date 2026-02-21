@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfig } from '../hooks/useConfig';
 import { Modal } from './Modal';
+import { AdminModal } from './AdminModal';
 import { DEFAULT_USER_PREFERENCES } from '../types/user';
 
 interface SettingsModalProps {
@@ -14,24 +16,46 @@ const inputClass =
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1';
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const { user, preferences, updatePreferences, signOut } = useAuth();
+  const { user, isAdmin, preferences, updatePreferences, signOut } = useAuth();
+  const { spots: spotConfigs } = useConfig();
 
   const [windSpeedMin, setWindSpeedMin] = useState(DEFAULT_USER_PREFERENCES.windSpeedMin);
   const [gustMin, setGustMin] = useState(DEFAULT_USER_PREFERENCES.gustMin);
   const [forecastDays, setForecastDays] = useState(DEFAULT_USER_PREFERENCES.forecastDays);
+  const [selectedSpots, setSelectedSpots] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   useEffect(() => {
     if (open && preferences) {
       setWindSpeedMin(preferences.windSpeedMin);
       setGustMin(preferences.gustMin);
       setForecastDays(preferences.forecastDays);
+      setSelectedSpots(
+        preferences.selectedSpots?.length
+          ? preferences.selectedSpots
+          : spotConfigs.map((s) => s.pointId),
+      );
     }
-  }, [open, preferences]);
+  }, [open, preferences, spotConfigs]);
+
+  function toggleSpot(pointId: string) {
+    setSelectedSpots((prev) =>
+      prev.includes(pointId)
+        ? prev.filter((id) => id !== pointId)
+        : [...prev, pointId],
+    );
+  }
 
   async function handleSave() {
+    const allSelected = selectedSpots.length === spotConfigs.length;
     setSaving(true);
-    await updatePreferences({ windSpeedMin, gustMin, forecastDays });
+    await updatePreferences({
+      windSpeedMin,
+      gustMin,
+      forecastDays,
+      selectedSpots: allSelected ? [] : selectedSpots,
+    });
     setSaving(false);
     onClose();
   }
@@ -44,8 +68,22 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const displayName = user?.displayName || user?.email || '';
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title="Paramètres">
       <div className="space-y-6">
+        {/* Admin button */}
+        {isAdmin && (
+          <button
+            onClick={() => setAdminOpen(true)}
+            className="w-full py-2.5 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors text-sm flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Administration
+          </button>
+        )}
+
         {/* User info */}
         <div className="flex items-center gap-3 pb-4 border-b border-slate-200 dark:border-slate-700">
           <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-500/20 flex items-center justify-center">
@@ -117,6 +155,33 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <option value={3}>3 jours</option>
             </select>
           </div>
+
+          {spotConfigs.length > 0 && (
+            <div>
+              <label className={labelClass}>Choisis tes spots</label>
+              <div className="space-y-2">
+                {[...spotConfigs].sort((a, b) => a.name.localeCompare(b.name)).map((spot) => (
+                  <label
+                    key={spot.pointId}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSpots.includes(spot.pointId)}
+                      onChange={() => toggleSpot(spot.pointId)}
+                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-sm text-slate-700 dark:text-slate-300">
+                      {spot.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                Seuls les spots cochés s'afficheront sur la page d'accueil
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -137,5 +202,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
       </div>
     </Modal>
+    <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
+    </>
   );
 }

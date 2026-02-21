@@ -3,7 +3,7 @@ import type { CurrentWeather } from '../types/forecast';
 
 const VQHA80_URL =
   'https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/VQHA80.csv';
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 10 * 60_000; // aligned with MeteoSuisse update frequency
 
 // CSV column indices (semicolon-separated)
 const COL_STATION = 0;

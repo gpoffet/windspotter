@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { NavigabilityConfig, SpotConfig } from '../types/forecast';
 
@@ -25,31 +25,39 @@ export function useConfig(): UseConfigResult {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadConfig() {
-      try {
-        const [spotsSnap, navSnap] = await Promise.all([
-          getDoc(doc(db, 'config', 'spots')),
-          getDoc(doc(db, 'config', 'navigability')),
-        ]);
-
-        if (spotsSnap.exists()) {
-          setSpots(spotsSnap.data().spots as SpotConfig[]);
+    const unsubSpots = onSnapshot(
+      doc(db, 'config', 'spots'),
+      (snap) => {
+        if (snap.exists()) {
+          setSpots(snap.data().spots as SpotConfig[]);
         }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Failed to load spots config:', err);
+        setLoading(false);
+      },
+    );
 
-        if (navSnap.exists()) {
-          setNavigability(navSnap.data() as NavigabilityConfig);
+    const unsubNav = onSnapshot(
+      doc(db, 'config', 'navigability'),
+      (snap) => {
+        if (snap.exists()) {
+          setNavigability(snap.data() as NavigabilityConfig);
         } else {
           setNavigability(DEFAULT_NAVIGABILITY);
         }
-      } catch (err) {
-        console.error('Failed to load config:', err);
+      },
+      (err) => {
+        console.error('Failed to load navigability config:', err);
         setNavigability(DEFAULT_NAVIGABILITY);
-      } finally {
-        setLoading(false);
-      }
-    }
+      },
+    );
 
-    loadConfig();
+    return () => {
+      unsubSpots();
+      unsubNav();
+    };
   }, []);
 
   return { spots, navigability, loading };

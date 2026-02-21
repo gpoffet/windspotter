@@ -4,6 +4,7 @@ export interface UserPreferences {
   windSpeedMin: number;
   gustMin: number;
   forecastDays: number;
+  selectedSpots?: string[];
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -15,6 +16,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
 export interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  isAdmin: boolean;
   preferences: UserPreferences | null;
   updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
   signOut: () => Promise<void>;

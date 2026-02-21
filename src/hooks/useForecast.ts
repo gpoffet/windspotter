@@ -11,7 +11,7 @@ interface UseForecastResult {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (options?: { force?: boolean }) => Promise<void>;
   dismissError: () => void;
 }
 
@@ -24,14 +24,13 @@ export function useForecast(): UseForecastResult {
 
   const dismissError = useCallback(() => setError(null), []);
 
-  const triggerRefresh = useCallback(async () => {
+  const triggerRefresh = useCallback(async (options?: { force?: boolean }) => {
     if (refreshing) return;
     setRefreshing(true);
     setError(null);
     try {
       const refreshFn = httpsCallable(functions, 'refreshForecast');
-      await refreshFn();
-      // onSnapshot will automatically pick up the new data
+      await refreshFn({ force: options?.force ?? false });
     } catch (err) {
       console.error('Failed to refresh forecast:', err);
       const age = data?.updatedAt ? Date.now() - data.updatedAt.toMillis() : null;

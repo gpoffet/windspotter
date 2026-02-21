@@ -12,6 +12,9 @@ import type {
   HourlyData,
 } from './types.js';
 
+// Admin functions
+export { listUsers, deleteUser } from './admin.js';
+
 initializeApp();
 const db = getFirestore();
 
@@ -32,7 +35,9 @@ export const refreshForecast = onCall(
     timeoutSeconds: 60,
     memory: '512MiB',
   },
-  async () => {
+  async (request) => {
+    const force = request.data?.force === true;
+
     // Step 0: Read config from Firestore
     const [spotsSnap, navSnap] = await Promise.all([
       db.doc('config/spots').get(),
@@ -46,13 +51,15 @@ export const refreshForecast = onCall(
     const spotsConfig = spotsSnap.data()!.spots as SpotConfig[];
     const navConfig = navSnap.data() as NavigabilityConfig;
 
-    // Step 1: Check if current data is still fresh
-    const existingSnap = await db.doc(FORECAST_DOC).get();
-    if (existingSnap.exists) {
-      const data = existingSnap.data()!;
-      const updatedAt = data.updatedAt as Timestamp;
-      if (Date.now() - updatedAt.toMillis() < DATA_TTL_MS) {
-        return { status: 'fresh', message: 'Data is still fresh' };
+    // Step 1: Check if current data is still fresh (skip if forced)
+    if (!force) {
+      const existingSnap = await db.doc(FORECAST_DOC).get();
+      if (existingSnap.exists) {
+        const data = existingSnap.data()!;
+        const updatedAt = data.updatedAt as Timestamp;
+        if (Date.now() - updatedAt.toMillis() < DATA_TTL_MS) {
+          return { status: 'fresh', message: 'Data is still fresh' };
+        }
       }
     }
 

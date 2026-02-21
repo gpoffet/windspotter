@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
 import { useCurrentWeather } from './hooks/useCurrentWeather';
@@ -39,17 +39,38 @@ function App() {
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
 
+  // Auto-refresh forecast when config spots don't match forecast spots (max 3 retries per config change)
+  const syncRetriesRef = useRef({ key: '', count: 0 });
+  useEffect(() => {
+    if (!data?.spots || refreshing) return;
+
+    const forecastPointIds = new Set(data.spots.map((s) => s.pointId));
+    const outOfSync = spotConfigs.some((s) => !forecastPointIds.has(s.pointId));
+    if (!outOfSync) return;
+
+    const configKey = spotConfigs.map((s) => s.pointId).sort().join(',');
+    const retries = syncRetriesRef.current;
+    const count = retries.key === configKey ? retries.count : 0;
+    if (count >= 3) return;
+
+    syncRetriesRef.current = { key: configKey, count: count + 1 };
+    refresh({ force: true });
+  }, [spotConfigs, data?.spots, refreshing, refresh]);
+
   // Compute navigable slots client-side with per-user thresholds
+  const configPointIds = useMemo(() => new Set(spotConfigs.map((s) => s.pointId)), [spotConfigs]);
   const enrichedSpots = useMemo(() => {
     if (!data?.spots || !navigability) return [];
-    return data.spots.map((spot) => ({
-      ...spot,
-      days: spot.days.map((day) => {
-        const slots = calculateSlots(day.hourly, navigability);
-        return { ...day, slots, isNavigable: slots.length > 0 };
-      }),
-    }));
-  }, [data?.spots, navigability]);
+    return data.spots
+      .filter((spot) => configPointIds.has(spot.pointId))
+      .map((spot) => ({
+        ...spot,
+        days: spot.days.map((day) => {
+          const slots = calculateSlots(day.hourly, navigability);
+          return { ...day, slots, isNavigable: slots.length > 0 };
+        }),
+      }));
+  }, [data?.spots, navigability, configPointIds]);
 
   // Map pointId → stationId from config so we can look up current weather per spot
   const stationByPointId = useMemo(() => {
@@ -65,6 +86,13 @@ function App() {
   );
 
   const currentWeather = useCurrentWeather(stationIds);
+
+  // Filter spots based on user preference
+  const visibleSpots = useMemo(() => {
+    const sel = preferences?.selectedSpots;
+    if (!sel || sel.length === 0) return enrichedSpots;
+    return enrichedSpots.filter((s) => sel.includes(s.pointId));
+  }, [enrichedSpots, preferences?.selectedSpots]);
 
   // Global max gust across all spots/days so every chart shares the same Y scale
   const globalMaxGust = useMemo(() => {
@@ -82,7 +110,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
-      <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={refresh} />
+      <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={() => refresh()} />
 
       <InstallBanner />
 
@@ -134,7 +162,7 @@ function App() {
             <span>{error}</span>
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={refresh}
+                onClick={() => refresh()}
                 className="px-3 py-1 rounded-md bg-red-100 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 transition-colors text-xs font-medium"
               >
                 Réessayer
@@ -171,7 +199,7 @@ function App() {
               Aucune donnée disponible
             </p>
             <button
-              onClick={refresh}
+              onClick={() => refresh()}
               className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
             >
               Charger les prévisions
@@ -180,19 +208,36 @@ function App() {
         )}
 
         {!isLoading && data && navigability && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {sortByNavigability(enrichedSpots).map((spot) => (
-              <SpotCard
-                key={spot.pointId}
-                spot={spot}
-                navigability={navigability}
-                yAxisMax={globalMaxGust}
-                currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
-                stationId={stationByPointId.get(spot.pointId) ?? null}
-                forecastDays={forecastDays}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {sortByNavigability(visibleSpots).map((spot) => (
+                <SpotCard
+                  key={spot.pointId}
+                  spot={spot}
+                  navigability={navigability}
+                  yAxisMax={globalMaxGust}
+                  currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
+                  stationId={stationByPointId.get(spot.pointId) ?? null}
+                  forecastDays={forecastDays}
+                />
+              ))}
+            </div>
+
+            {visibleSpots.length < enrichedSpots.length && (
+              <div className="mt-6 text-center">
+                <button
+                  onClick={() => setShowSettingsFromBanner(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                  </svg>
+                  Configure tes spots
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 
