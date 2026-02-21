@@ -8,6 +8,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
   Rectangle,
+  usePlotArea,
 } from 'recharts';
 import type { HourlyData, NavigableSlot, NavigabilityConfig } from '../types/forecast';
 
@@ -17,6 +18,7 @@ interface WindChartProps {
   navigability: NavigabilityConfig;
   yAxisMax: number;
   currentHour?: number | null;
+  currentMinute?: number;
 }
 
 interface ChartEntry {
@@ -45,6 +47,24 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
   );
 }
 
+function CurrentTimeMarker({ hourIndex, currentMinute, totalBars }: { hourIndex: number; currentMinute: number; totalBars: number }) {
+  const plotArea = usePlotArea();
+  if (!plotArea) return null;
+  const step = plotArea.width / totalBars;
+  const x = plotArea.x + (hourIndex + currentMinute / 60) * step;
+  return (
+    <line
+      x1={x}
+      y1={plotArea.y}
+      x2={x}
+      y2={plotArea.y + plotArea.height}
+      stroke="#ef4444"
+      strokeWidth={2}
+      strokeDasharray="4 2"
+    />
+  );
+}
+
 function GustBarWithArrow(props: any) {
   const { payload } = props;
   const showArrow = payload && (payload.wind > 0 || payload.gustExtra > 0);
@@ -64,7 +84,7 @@ function GustBarWithArrow(props: any) {
   );
 }
 
-export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour }: WindChartProps) {
+export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour, currentMinute = 0 }: WindChartProps) {
   const chartData: ChartEntry[] = hourly.map((h) => {
     const navigable = slots.some((s) => h.hour >= s.start && h.hour < s.end);
     return {
@@ -137,15 +157,13 @@ export function WindChart({ hourly, slots, navigability, yAxisMax, currentHour }
           />
         ))}
 
-        {/* Current hour marker */}
-        {currentHour != null && chartData.some((d) => d.hour === currentHour) && (
-          <ReferenceLine
-            x={String(currentHour)}
-            stroke="#ef4444"
-            strokeWidth={2}
-            strokeDasharray="4 2"
-          />
-        )}
+        {/* Current time marker — positioned precisely within the hour band */}
+        {currentHour != null && (() => {
+          const hourIndex = chartData.findIndex((d) => d.hour === currentHour);
+          return hourIndex >= 0 ? (
+            <CurrentTimeMarker hourIndex={hourIndex} currentMinute={currentMinute} totalBars={chartData.length} />
+          ) : null;
+        })()}
 
         {/* Threshold lines */}
         <ReferenceLine

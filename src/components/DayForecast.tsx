@@ -14,6 +14,7 @@ export function DayForecast({ day, label, navigability, yAxisMax }: DayForecastP
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const currentHour = day.date === todayStr ? now.getHours() : null;
+  const currentMinute = day.date === todayStr ? now.getMinutes() : 0;
 
   // Compute summary stats
   const maxSpeed = Math.max(...day.hourly.map((h) => h.speed));
@@ -51,7 +52,7 @@ export function DayForecast({ day, label, navigability, yAxisMax }: DayForecastP
 
       {/* Wind chart */}
       {day.hourly.length > 0 && (
-        <WindChart hourly={day.hourly} slots={day.slots} navigability={navigability} yAxisMax={yAxisMax} currentHour={currentHour} />
+        <WindChart hourly={day.hourly} slots={day.slots} navigability={navigability} yAxisMax={yAxisMax} currentHour={currentHour} currentMinute={currentMinute} />
       )}
     </div>
   );
