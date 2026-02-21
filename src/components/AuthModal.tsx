@@ -15,6 +15,7 @@ interface AuthModalProps {
   open: boolean;
   onClose: () => void;
   onAuthenticated: () => void;
+  initialView?: AuthView;
 }
 
 function firebaseErrorMessage(code: string): string {
@@ -38,8 +39,8 @@ const primaryBtnClass =
 
 const linkClass = 'text-teal-600 dark:text-teal-400 hover:underline text-sm';
 
-export function AuthModal({ open, onClose, onAuthenticated }: AuthModalProps) {
-  const [view, setView] = useState<AuthView>('login');
+export function AuthModal({ open, onClose, onAuthenticated, initialView = 'login' }: AuthModalProps) {
+  const [view, setView] = useState<AuthView>(initialView);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -54,7 +55,7 @@ export function AuthModal({ open, onClose, onAuthenticated }: AuthModalProps) {
     setLastName('');
     setError(null);
     setLoading(false);
-    setView('login');
+    setView(initialView);
   }
 
   function handleClose() {

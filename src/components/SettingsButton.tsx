@@ -23,6 +23,14 @@ export function SettingsButton() {
 
   return (
     <>
+      {!user && (
+        <button
+          onClick={() => setShowAuth(true)}
+          className="text-xs text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+        >
+          Connexion
+        </button>
+      )}
       <button
         onClick={handleClick}
         className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"

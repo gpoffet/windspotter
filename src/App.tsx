@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
 import { useCurrentWeather } from './hooks/useCurrentWeather';
@@ -6,6 +6,8 @@ import { useEffectiveConfig } from './hooks/useEffectiveConfig';
 import { useAuth } from './contexts/AuthContext';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
+import { AuthModal } from './components/AuthModal';
+import { SettingsModal } from './components/SettingsModal';
 import { calculateSlots } from './utils/navigability';
 import type { SpotForecast } from './types/forecast';
 
@@ -27,8 +29,10 @@ function App() {
   const { data, loading, refreshing, error, refresh, dismissError } = useForecast();
   const { spots: spotConfigs, navigability: globalNavigability, loading: configLoading } = useConfig();
   const navigability = useEffectiveConfig(globalNavigability);
-  const { preferences } = useAuth();
+  const { user, loading: authLoading, preferences } = useAuth();
   const forecastDays = preferences?.forecastDays ?? 2;
+  const [showAuthFromBanner, setShowAuthFromBanner] = useState(false);
+  const [showSettingsFromBanner, setShowSettingsFromBanner] = useState(false);
 
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
@@ -77,6 +81,37 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
       <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={refresh} />
+
+      {/* Signup banner for anonymous users */}
+      {!authLoading && !user && (
+        <div className="bg-gradient-to-r from-teal-500 to-emerald-500 dark:from-teal-600 dark:to-emerald-600">
+          <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-center gap-3">
+            <p className="text-white text-sm">
+              Crée ton compte gratuit et configure les prévisions à ton besoin
+            </p>
+            <button
+              onClick={() => setShowAuthFromBanner(true)}
+              className="shrink-0 px-3 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white text-xs font-medium transition-colors"
+            >
+              Créer un compte
+            </button>
+          </div>
+        </div>
+      )}
+
+      <AuthModal
+        open={showAuthFromBanner}
+        onClose={() => setShowAuthFromBanner(false)}
+        initialView="signup"
+        onAuthenticated={() => {
+          setShowAuthFromBanner(false);
+          setShowSettingsFromBanner(true);
+        }}
+      />
+      <SettingsModal
+        open={showSettingsFromBanner}
+        onClose={() => setShowSettingsFromBanner(false)}
+      />
 
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* Refresh banner */}
