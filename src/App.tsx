@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
 import { useCurrentWeather } from './hooks/useCurrentWeather';
@@ -6,12 +6,15 @@ import { useEffectiveConfig } from './hooks/useEffectiveConfig';
 import { useAuth } from './contexts/AuthContext';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
+import { ViewToggle } from './components/ViewToggle';
 import { AuthModal } from './components/AuthModal';
 import { SettingsModal } from './components/SettingsModal';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { InstallBanner } from './components/InstallBanner';
 import { calculateSlots } from './utils/navigability';
 import type { SpotForecast } from './types/forecast';
+
+const SpotMap = lazy(() => import('./components/SpotMap'));
 
 /**
  * Sort spots by navigability score (navigable spots first).
@@ -35,6 +38,7 @@ function App() {
   const forecastDays = preferences?.forecastDays ?? 2;
   const [showAuthFromBanner, setShowAuthFromBanner] = useState(false);
   const [showSettingsFromBanner, setShowSettingsFromBanner] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
@@ -209,33 +213,49 @@ function App() {
 
         {!isLoading && data && navigability && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {sortByNavigability(visibleSpots).map((spot) => (
-                <SpotCard
-                  key={spot.pointId}
-                  spot={spot}
-                  navigability={navigability}
-                  yAxisMax={globalMaxGust}
-                  currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
-                  stationId={stationByPointId.get(spot.pointId) ?? null}
-                  forecastDays={forecastDays}
-                />
-              ))}
-            </div>
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
 
-            {visibleSpots.length < enrichedSpots.length && (
-              <div className="mt-6 text-center">
-                <button
-                  onClick={() => setShowSettingsFromBanner(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-                  </svg>
-                  Configure tes spots
-                </button>
-              </div>
+            {viewMode === 'list' ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {sortByNavigability(visibleSpots).map((spot) => (
+                    <SpotCard
+                      key={spot.pointId}
+                      spot={spot}
+                      navigability={navigability}
+                      yAxisMax={globalMaxGust}
+                      currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
+                      stationId={stationByPointId.get(spot.pointId) ?? null}
+                      forecastDays={forecastDays}
+                    />
+                  ))}
+                </div>
+
+                {visibleSpots.length < enrichedSpots.length && (
+                  <div className="mt-6 text-center">
+                    <button
+                      onClick={() => setShowSettingsFromBanner(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                      </svg>
+                      Configure tes spots
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <Suspense fallback={<div className="h-[60vh] rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />}>
+                <SpotMap
+                  spots={visibleSpots}
+                  currentWeather={currentWeather}
+                  stationByPointId={stationByPointId}
+                  forecastDays={forecastDays}
+                  navigability={navigability}
+                />
+              </Suspense>
             )}
           </>
         )}
