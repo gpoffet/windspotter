@@ -14,10 +14,7 @@ interface SpotMapMarkerProps {
 
 type NavStatus = 'navigable' | 'not-navigable';
 
-const STATUS_COLORS: Record<NavStatus, { bg: string; ring: string }> = {
-  navigable: { bg: '#22c55e', ring: '#16a34a' },
-  'not-navigable': { bg: '#94a3b8', ring: '#64748b' },
-};
+const PIN_PATH = 'M28 3 C40 3 49 13 49 25 C49 37 28 53 28 53 C28 53 7 37 7 25 C7 13 16 3 28 3Z';
 
 function isHourNavigable(h: HourlyData, config: NavigabilityConfig): boolean {
   return h.speed >= config.windSpeedMin && h.gust >= config.gustMin;
@@ -28,22 +25,47 @@ function findHourly(spot: SpotForecast, date: string, hour: number): HourlyData 
   return day?.hourly.find((h) => h.hour === hour);
 }
 
-function makeIcon(letter: string, status: NavStatus) {
-  const { bg, ring } = STATUS_COLORS[status];
+function makeIcon(status: NavStatus) {
+  const isNav = status === 'navigable';
+  const gradId = isNav ? 'wsPinNav' : 'wsPinDef';
+  const clipId = isNav ? 'wsClipNav' : 'wsClipDef';
+  const gradStops = isNav
+    ? ['#2dd4bf', '#14b8a6', '#0d9488']
+    : ['#b0bec5', '#94a3b8', '#78909c'];
+  const waveOpacities = isNav ? [0.85, 0.6, 0.4] : [0.5, 0.35, 0.25];
+  const markerClass = isNav ? 'marker-navigable' : 'marker-default';
+  const greenRing = isNav
+    ? `<path d="${PIN_PATH}" fill="none" stroke="#22c55e" stroke-width="5" opacity="0.8"/>`
+    : '';
+
+  const html = `<svg class="${markerClass}" width="40" height="48" viewBox="2 -1 52 58" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="${gradId}" x1="8" y1="0" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="${gradStops[0]}"/>
+        <stop offset="50%" stop-color="${gradStops[1]}"/>
+        <stop offset="100%" stop-color="${gradStops[2]}"/>
+      </linearGradient>
+      <clipPath id="${clipId}">
+        <path d="${PIN_PATH}"/>
+      </clipPath>
+    </defs>
+    ${greenRing}
+    <path d="${PIN_PATH}" fill="url(#${gradId})"/>
+    <g clip-path="url(#${clipId})">
+      <path d="M10 16 C16 13,24 16,30 13 C36 10,42 14,48 12" stroke="rgba(255,255,255,${waveOpacities[0]})" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M8 23 C16 26,24 21,32 23 C40 25,44 20,50 22" stroke="rgba(255,255,255,${waveOpacities[1]})" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+      <path d="M10 30 C18 27,26 31,34 28 C40 26,46 29,50 28" stroke="rgba(255,255,255,${waveOpacities[2]})" stroke-width="2" stroke-linecap="round" fill="none"/>
+    </g>
+    <circle cx="28" cy="23" r="3" fill="rgba(255,255,255,0.25)"/>
+    <circle cx="28" cy="23" r="1.5" fill="rgba(255,255,255,0.85)"/>
+  </svg>`;
+
   return L.divIcon({
     className: '',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -18],
-    html: `<div style="
-      width:32px;height:32px;border-radius:50%;
-      background:${bg};border:3px solid ${ring};
-      display:flex;align-items:center;justify-content:center;
-      color:#fff;font-weight:700;font-size:14px;
-      box-shadow:0 2px 6px rgba(0,0,0,0.3);
-      font-family:system-ui,sans-serif;
-      transition:background 0.2s,border-color 0.2s;
-    ">${letter}</div>`,
+    iconSize: [40, 48],
+    iconAnchor: [20, 45],
+    popupAnchor: [0, -45],
+    html,
   });
 }
 
@@ -53,8 +75,8 @@ export function SpotMapMarker({ spot, currentWeather, selectedDate, selectedHour
   const status: NavStatus = navigable ? 'navigable' : 'not-navigable';
 
   const icon = useMemo(
-    () => makeIcon(spot.name.charAt(0).toUpperCase(), status),
-    [spot.name, status],
+    () => makeIcon(status),
+    [status],
   );
 
   return (

@@ -1,10 +1,22 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { useState } from 'react';
 
 export function UpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW();
+  const [updating, setUpdating] = useState(false);
+
+  const handleUpdate = () => {
+    setUpdating(true);
+    // Listen for controller change directly on the native API
+    // This is more reliable than workbox-window's "controlling" event
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+    updateServiceWorker(true);
+  };
 
   if (!needRefresh) return null;
 
@@ -17,10 +29,11 @@ export function UpdatePrompt() {
           <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
           <path d="M16 21h5v-5" />
         </svg>
-        <span className="flex-1">Nouvelle version disponible</span>
+        <span className="flex-1">{updating ? 'Mise à jour...' : 'Nouvelle version disponible'}</span>
         <button
-          onClick={() => updateServiceWorker(true)}
-          className="shrink-0 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-400 text-white text-xs font-semibold transition-colors"
+          onClick={handleUpdate}
+          disabled={updating}
+          className="shrink-0 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
         >
           Mettre à jour
         </button>
