@@ -9,6 +9,7 @@ import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { AuthModal } from './components/AuthModal';
 import { SettingsModal } from './components/SettingsModal';
 import { UpdatePrompt } from './components/UpdatePrompt';
+import { InstallBanner } from './components/InstallBanner';
 import { calculateSlots } from './utils/navigability';
 import type { SpotForecast } from './types/forecast';
 
@@ -82,6 +83,8 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
       <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={refresh} />
+
+      <InstallBanner />
 
       {/* Signup banner for anonymous users */}
       {!authLoading && !user && (
