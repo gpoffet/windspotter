@@ -30,5 +30,9 @@ functions/node_modules
 **/serviceAccountKey.json
 
 # Environment
+.env
 .env.local
 .env.*.local
+
+# Claude Code
+.claude/
