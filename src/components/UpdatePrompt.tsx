@@ -4,18 +4,23 @@ import { useState } from 'react';
 export function UpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
   } = useRegisterSW();
   const [updating, setUpdating] = useState(false);
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     setUpdating(true);
-    // Listen for controller change directly on the native API
-    // This is more reliable than workbox-window's "controlling" event
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       window.location.reload();
     });
-    updateServiceWorker(true);
+    // Send SKIP_WAITING directly via native API — workbox-window's
+    // messageSkipWaiting() can silently no-op if its internal reference is stale
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      // Waiting worker already activated or gone — just reload
+      window.location.reload();
+    }
   };
 
   if (!needRefresh) return null;
