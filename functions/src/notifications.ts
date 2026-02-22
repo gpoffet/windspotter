@@ -108,6 +108,17 @@ export const sendTestNotification = onCall(
     }
 
     const subData = subSnap.data() as PushSubscriptionDoc;
+    const endpoint = subData.subscription?.endpoint ?? 'missing';
+
+    // Reject obviously invalid endpoints before trying to send
+    if (!endpoint.startsWith('https://') || endpoint.includes('invalid')) {
+      console.error(`Invalid endpoint for user ${uid}: ${endpoint}`);
+      await subSnap.ref.delete();
+      throw new HttpsError(
+        'failed-precondition',
+        `Souscription invalide (${endpoint}). Désactive puis réactive les notifications.`,
+      );
+    }
 
     initWebPush();
 
@@ -121,7 +132,7 @@ export const sendTestNotification = onCall(
       );
       return { success: true };
     } catch (err: unknown) {
-      console.error('sendTestNotification failed:', err);
+      console.error(`sendTestNotification failed for ${uid} (endpoint: ${endpoint}):`, err);
       const statusCode = (err as { statusCode?: number }).statusCode;
       const body = (err as { body?: string }).body;
       if (statusCode === 410 || statusCode === 404) {
@@ -134,7 +145,7 @@ export const sendTestNotification = onCall(
       const detail = statusCode
         ? `HTTP ${statusCode}${body ? ': ' + body : ''}`
         : (err instanceof Error ? err.message : String(err));
-      throw new HttpsError('internal', `Échec de l'envoi: ${detail}`);
+      throw new HttpsError('internal', `Échec de l'envoi (${endpoint.slice(0, 60)}…): ${detail}`);
     }
   },
 );
