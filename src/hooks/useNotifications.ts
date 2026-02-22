@@ -81,6 +81,13 @@ async function subscribePush(uid: string): Promise<string | null> {
     return `Échec de l'abonnement push: ${err instanceof Error ? err.message : String(err)}`;
   }
 
+  // Verify the new subscription has a valid endpoint
+  if (!isValidEndpoint(subscription)) {
+    console.error('New subscription has invalid endpoint:', subscription.endpoint);
+    await subscription.unsubscribe().catch(() => {});
+    return `Endpoint push invalide (${subscription.endpoint}). Essaie de vider le cache du site et réessayer.`;
+  }
+
   try {
     await setDoc(doc(db, 'pushSubscriptions', uid), {
       subscription: subscription.toJSON(),
