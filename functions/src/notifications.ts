@@ -122,13 +122,31 @@ export const sendTestNotification = onCall(
 
     initWebPush();
 
+    // Build the same payload as the morning notification
+    const ctx = await loadForecastContext(db);
+    let payload: { title: string; body: string };
+
+    if (ctx) {
+      const navigableSpots = await computeNavigableSpotsForUser(db, uid, ctx);
+      if (navigableSpots.length > 0) {
+        payload = buildNotificationPayload(navigableSpots);
+      } else {
+        payload = {
+          title: 'Pas de vent aujourd\'hui',
+          body: 'Aucun spot ne répond à tes critères pour aujourd\'hui.',
+        };
+      }
+    } else {
+      payload = {
+        title: 'Test Windspotter',
+        body: 'Données de prévision indisponibles. La notification fonctionne !',
+      };
+    }
+
     try {
       await webpush.sendNotification(
         subData.subscription,
-        JSON.stringify({
-          title: 'Test Windspotter',
-          body: 'Si tu vois cette notification, tout fonctionne !',
-        }),
+        JSON.stringify(payload),
       );
       return { success: true };
     } catch (err: unknown) {
@@ -150,25 +168,27 @@ export const sendTestNotification = onCall(
   },
 );
 
-/**
- * Core logic: send notifications to all subscribed users.
- */
-async function sendNotificationsToAll(db: FirebaseFirestore.Firestore) {
-  const [navSnap, spotsSnap, forecastSnap, subsSnap] = await Promise.all([
+/** Shared forecast context used by both daily and test notifications. */
+interface ForecastContext {
+  globalNav: NavigabilityConfig;
+  forecastByPointId: Map<string, SpotForecast>;
+  spotNameByPointId: Map<string, string>;
+  allPointIds: Set<string>;
+  todayStr: string;
+}
+
+/** Load config + forecast data needed to compute navigable spots. */
+async function loadForecastContext(
+  db: FirebaseFirestore.Firestore,
+): Promise<ForecastContext | null> {
+  const [navSnap, spotsSnap, forecastSnap] = await Promise.all([
     db.doc('config/navigability').get(),
     db.doc('config/spots').get(),
     db.doc('forecasts/latest').get(),
-    db.collection('pushSubscriptions').get(),
   ]);
 
   if (!navSnap.exists || !spotsSnap.exists || !forecastSnap.exists) {
-    console.log('Missing config or forecast data, skipping notifications');
-    return;
-  }
-
-  if (subsSnap.empty) {
-    console.log('No push subscriptions, skipping');
-    return;
+    return null;
   }
 
   const globalNav = navSnap.data() as NavigabilityConfig;
@@ -191,48 +211,77 @@ async function sendNotificationsToAll(db: FirebaseFirestore.Firestore) {
     timeZone: globalNav.timezone,
   });
 
+  return { globalNav, forecastByPointId, spotNameByPointId, allPointIds, todayStr };
+}
+
+/** Compute navigable spots for a single user given their preferences. */
+async function computeNavigableSpotsForUser(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  ctx: ForecastContext,
+): Promise<NavigableSpotInfo[]> {
+  const prefsSnap = await db
+    .doc(`users/${uid}/settings/preferences`)
+    .get();
+
+  const prefs: UserPreferences = prefsSnap.exists
+    ? (prefsSnap.data() as UserPreferences)
+    : { windSpeedMin: 15, gustMin: 25 };
+
+  const effectiveNav: NavigabilityConfig = {
+    ...ctx.globalNav,
+    windSpeedMin: prefs.windSpeedMin,
+    gustMin: prefs.gustMin,
+  };
+
+  const selectedPointIds =
+    prefs.selectedSpots && prefs.selectedSpots.length > 0
+      ? prefs.selectedSpots
+      : [...ctx.allPointIds];
+
+  const navigableSpots: NavigableSpotInfo[] = [];
+
+  for (const pointId of selectedPointIds) {
+    const forecast = ctx.forecastByPointId.get(pointId);
+    if (!forecast) continue;
+
+    const todayForecast = forecast.days.find((d) => d.date === ctx.todayStr);
+    if (!todayForecast) continue;
+
+    const slots = calculateSlots(todayForecast.hourly, effectiveNav);
+    if (slots.length > 0) {
+      navigableSpots.push({
+        name: ctx.spotNameByPointId.get(pointId) || forecast.name,
+        slots,
+      });
+    }
+  }
+
+  return navigableSpots;
+}
+
+/**
+ * Core logic: send notifications to all subscribed users.
+ */
+async function sendNotificationsToAll(db: FirebaseFirestore.Firestore) {
+  const ctx = await loadForecastContext(db);
+  if (!ctx) {
+    console.log('Missing config or forecast data, skipping notifications');
+    return;
+  }
+
+  const subsSnap = await db.collection('pushSubscriptions').get();
+  if (subsSnap.empty) {
+    console.log('No push subscriptions, skipping');
+    return;
+  }
+
   const tasks = subsSnap.docs.map(async (subDoc) => {
     const uid = subDoc.id;
     const subData = subDoc.data() as PushSubscriptionDoc;
 
     try {
-      const prefsSnap = await db
-        .doc(`users/${uid}/settings/preferences`)
-        .get();
-
-      const prefs: UserPreferences = prefsSnap.exists
-        ? (prefsSnap.data() as UserPreferences)
-        : { windSpeedMin: 15, gustMin: 25 };
-
-      const effectiveNav: NavigabilityConfig = {
-        ...globalNav,
-        windSpeedMin: prefs.windSpeedMin,
-        gustMin: prefs.gustMin,
-      };
-
-      const selectedPointIds =
-        prefs.selectedSpots && prefs.selectedSpots.length > 0
-          ? prefs.selectedSpots
-          : [...allPointIds];
-
-      const navigableSpots: NavigableSpotInfo[] = [];
-
-      for (const pointId of selectedPointIds) {
-        const forecast = forecastByPointId.get(pointId);
-        if (!forecast) continue;
-
-        const todayForecast = forecast.days.find((d) => d.date === todayStr);
-        if (!todayForecast) continue;
-
-        const slots = calculateSlots(todayForecast.hourly, effectiveNav);
-        if (slots.length > 0) {
-          navigableSpots.push({
-            name: spotNameByPointId.get(pointId) || forecast.name,
-            slots,
-          });
-        }
-      }
-
+      const navigableSpots = await computeNavigableSpotsForUser(db, uid, ctx);
       if (navigableSpots.length === 0) return;
 
       const payload = buildNotificationPayload(navigableSpots);
