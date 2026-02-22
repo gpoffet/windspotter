@@ -155,7 +155,7 @@ export function SpotLocationPicker({ lat, lon, onChange, onSearchSelect }: SpotL
     <div className="space-y-2">
       <div className="relative rounded-lg border border-slate-300 dark:border-slate-600 overflow-hidden">
         {/* Search overlay */}
-        <div className="absolute top-2 left-12 right-2 z-[1000]">
+        <div className="absolute top-2 left-12 right-2 z-[800]">
           <div className="relative">
             <input
               type="text"
