@@ -12,7 +12,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { InstallBanner } from './components/InstallBanner';
 import { calculateSlots } from './utils/navigability';
-import type { SpotForecast } from './types/forecast';
+import type { SpotConfig, SpotForecast } from './types/forecast';
 
 const SpotMap = lazy(() => import('./components/SpotMap'));
 
@@ -63,18 +63,27 @@ function App() {
 
   // Compute navigable slots client-side with per-user thresholds
   const configPointIds = useMemo(() => new Set(spotConfigs.map((s) => s.pointId)), [spotConfigs]);
+  const configByPointId = useMemo(() => {
+    const map = new Map<string, SpotConfig>();
+    for (const s of spotConfigs) map.set(s.pointId, s);
+    return map;
+  }, [spotConfigs]);
   const enrichedSpots = useMemo(() => {
     if (!data?.spots || !navigability) return [];
     return data.spots
       .filter((spot) => configPointIds.has(spot.pointId))
-      .map((spot) => ({
-        ...spot,
-        days: spot.days.map((day) => {
-          const slots = calculateSlots(day.hourly, navigability);
-          return { ...day, slots, isNavigable: slots.length > 0 };
-        }),
-      }));
-  }, [data?.spots, navigability, configPointIds]);
+      .map((spot) => {
+        const cfg = configByPointId.get(spot.pointId);
+        return {
+          ...spot,
+          ...(cfg && { name: cfg.name, lat: cfg.lat, lon: cfg.lon, lake: cfg.lake }),
+          days: spot.days.map((day) => {
+            const slots = calculateSlots(day.hourly, navigability);
+            return { ...day, slots, isNavigable: slots.length > 0 };
+          }),
+        };
+      });
+  }, [data?.spots, navigability, configPointIds, configByPointId]);
 
   // Map pointId → stationId from config so we can look up current weather per spot
   const stationByPointId = useMemo(() => {

@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
 import { Modal } from './Modal';
+import { SpotLocationPicker, type SearchResult } from './SpotLocationPicker';
 import type { NavigabilityConfig, SpotConfig } from '../types/forecast';
 
 type Tab = 'settings' | 'users' | 'spots';
@@ -368,14 +369,6 @@ function UsersTab({ open }: { open: boolean }) {
 
 // --- Spots Tab ---
 
-interface GeoAdminResult {
-  label: string;
-  detail: string;
-  lat: number;
-  lon: number;
-  origin: string;
-}
-
 const SMN_STATIONS: Record<string, { name: string; location: string; lat: number; lon: number }> = {
   PUY: { name: 'Pully', location: 'Pully, VD', lat: 46.5106, lon: 6.6667 },
   CGI: { name: 'Changins', location: 'Nyon, VD', lat: 46.4011, lon: 6.2277 },
@@ -432,18 +425,19 @@ function SpotsTab({ open }: { open: boolean }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Search
-  const [searchText, setSearchText] = useState('');
-  const [searchResults, setSearchResults] = useState<GeoAdminResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Add/edit spot mode
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
 
-  // New spot form
+  // Spot form
   const [newSpot, setNewSpot] = useState<Partial<SpotConfig> | null>(null);
   const [selectedLake, setSelectedLake] = useState('');
   const [selectedStation, setSelectedStation] = useState('');
   const [adding, setAdding] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Reverse geocoding debounce
+  const reverseGeoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -463,55 +457,33 @@ function SpotsTab({ open }: { open: boolean }) {
       });
   }, [open]);
 
-  function handleSearchChange(value: string) {
-    setSearchText(value);
+  function handleLocationChange(lat: number, lon: number) {
+    setNewSpot((prev) => ({ ...(prev ?? {}), lat, lon }));
+    setSelectedStation(findNearestStation(lat, lon));
+    setSelectedLake(findNearestLake(lat, lon));
     setValidationError(null);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
 
-    const trimmed = value.trim();
-    if (trimmed.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    searchTimerRef.current = setTimeout(async () => {
-      setSearching(true);
+    // Debounced reverse geocoding for NPA via MapServer identify
+    if (reverseGeoTimerRef.current) clearTimeout(reverseGeoTimerRef.current);
+    reverseGeoTimerRef.current = setTimeout(async () => {
       try {
-        const url = `https://api3.geo.admin.ch/rest/services/api/SearchServer?searchText=${encodeURIComponent(trimmed)}&origins=zipcode,gg25&type=locations&limit=10`;
-        const res = await fetch(url);
-        const data = await res.json();
-        setSearchResults(data.results?.map((r: Record<string, unknown>) => r.attrs) ?? []);
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-  }
-
-  async function handleSelectResult(result: GeoAdminResult) {
-    const lat = Math.round(result.lat * 10000) / 10000;
-    const lon = Math.round(result.lon * 10000) / 10000;
-
-    // Extract NPA: available directly for zipcode results, needs lookup for gg25
-    let npa = 0;
-    const npaMatch = result.detail.match(/^\d{4}/);
-    if (npaMatch) {
-      npa = parseInt(npaMatch[0], 10);
-    } else if (result.origin === 'gg25') {
-      // For municipality results, look up NPA via the MapServer find endpoint
-      try {
-        const name = result.label.replace(/<[^>]*>/g, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-        const url = `https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.swisstopo-vd.ortschaftenverzeichnis_plz&searchField=langtext&searchText=${encodeURIComponent(name)}&returnGeometry=false`;
+        const url = `https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometryType=esriGeometryPoint&geometry=${lon},${lat}&sr=4326&layers=all:ch.swisstopo-vd.ortschaftenverzeichnis_plz&tolerance=0&mapExtent=5.8,45.8,10.5,47.9&imageDisplay=500,300,96&returnGeometry=false`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.results?.length) {
-          npa = data.results[0].attributes?.plz ?? 0;
+          const npa = data.results[0].attributes?.plz ?? 0;
+          if (npa >= 1000 && npa <= 9999) {
+            setNewSpot((prev) => prev ? { ...prev, npa, pointId: `${npa}00` } : prev);
+          }
         }
-      } catch { /* NPA will remain 0, admin can fill manually */ }
-    }
+      } catch { /* NPA will remain unfilled, admin can set manually */ }
+    }, 500);
+  }
 
-    const nameFromLabel = result.label
+  async function handleSearchSelect(result: SearchResult) {
+    const { lat, lon, label, detail, origin } = result;
+
+    const nameFromLabel = label
       .replace(/<[^>]*>/g, '')
       .replace(/^\d+\s*-\s*/, '')
       .replace(/\s*\([^)]*\)\s*$/, '')
@@ -523,36 +495,61 @@ function SpotsTab({ open }: { open: boolean }) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
+    // Extract NPA directly from search result
+    let npa = 0;
+    const npaMatch = detail.match(/^\d{4}/);
+    if (npaMatch) {
+      npa = parseInt(npaMatch[0], 10);
+    } else if (origin === 'gg25') {
+      // For municipality results, look up NPA via the MapServer find endpoint
+      try {
+        const cleanName = label.replace(/<[^>]*>/g, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+        const url = `https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.swisstopo-vd.ortschaftenverzeichnis_plz&searchField=langtext&searchText=${encodeURIComponent(cleanName)}&returnGeometry=false`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.results?.length) {
+          npa = data.results[0].attributes?.plz ?? 0;
+        }
+      } catch { /* NPA will remain 0, admin can fill manually */ }
+    }
+
     setNewSpot({
       name: nameFromLabel,
       id,
-      npa,
-      pointId: npa ? `${npa}00` : '',
       lat,
       lon,
+      npa: npa || undefined,
+      pointId: npa ? `${npa}00` : '',
     });
-
     setSelectedStation(findNearestStation(lat, lon));
     setSelectedLake(findNearestLake(lat, lon));
-    setSearchText('');
-    setSearchResults([]);
+    setValidationError(null);
+  }
+
+  function handleEditSpot(spot: SpotConfig) {
+    setNewSpot({ ...spot });
+    setSelectedLake(spot.lake);
+    setSelectedStation(spot.stationId);
+    setEditingSpotId(spot.id);
+    setShowAddForm(true);
     setValidationError(null);
   }
 
   function validate(): string | null {
-    if (!newSpot) return 'Sélectionnez une localité.';
+    if (!newSpot) return 'Placez un marqueur sur la carte.';
     if (!newSpot.name?.trim()) return 'Le nom est requis.';
     if (!newSpot.id?.trim()) return "L'identifiant est requis.";
     if (!newSpot.npa || newSpot.npa < 1000 || newSpot.npa > 9999) return 'Le NPA doit être un code postal suisse valide (4 chiffres).';
     if (!newSpot.lat || !newSpot.lon) return 'Les coordonnées sont requises.';
     if (!selectedLake) return 'Sélectionnez un lac.';
     if (!selectedStation) return 'Sélectionnez une station SMN.';
-    if (spots.some((s) => s.id === newSpot.id)) return `Un spot avec l'identifiant "${newSpot.id}" existe déjà.`;
-    if (spots.some((s) => s.npa === newSpot.npa)) return `Un spot avec le NPA ${newSpot.npa} existe déjà.`;
+    const otherSpots = editingSpotId ? spots.filter((s) => s.id !== editingSpotId) : spots;
+    if (otherSpots.some((s) => s.id === newSpot.id)) return `Un spot avec l'identifiant "${newSpot.id}" existe déjà.`;
+    if (otherSpots.some((s) => s.npa === newSpot.npa)) return `Un spot avec le NPA ${newSpot.npa} existe déjà.`;
     return null;
   }
 
-  async function handleAddSpot() {
+  async function handleSaveSpot() {
     const err = validate();
     if (err) {
       setValidationError(err);
@@ -572,17 +569,21 @@ function SpotsTab({ open }: { open: boolean }) {
         lake: selectedLake,
         alplakesKey: selectedLake,
       };
-      const updated = [...spots, spot];
+      const updated = editingSpotId
+        ? spots.map((s) => s.id === editingSpotId ? spot : s)
+        : [...spots, spot];
       await setDoc(doc(db, 'config', 'spots'), { spots: updated });
       setSpots(updated);
       setNewSpot(null);
       setSelectedLake('');
       setSelectedStation('');
-      // Trigger forecast refresh so the new spot appears on the main page
+      setEditingSpotId(null);
+      setShowAddForm(false);
+      // Trigger forecast refresh so changes appear on the main page
       const refreshFn = httpsCallable(functions, 'refreshForecast');
       refreshFn({ force: true }).catch(() => { /* silent — will refresh on next cycle */ });
     } catch {
-      setError("Impossible d'ajouter le spot.");
+      setError(editingSpotId ? 'Impossible de modifier le spot.' : "Impossible d'ajouter le spot.");
     } finally {
       setAdding(false);
     }
@@ -627,40 +628,33 @@ function SpotsTab({ open }: { open: boolean }) {
     <div className="space-y-5">
       {/* Add spot section */}
       <div className="space-y-3">
+        {!showAddForm ? (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="w-full py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700 transition-colors text-sm flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Ajouter un spot
+          </button>
+        ) : (
+        <>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Recherchez un NPA ou une localité pour ajouter un spot.
+          {editingSpotId ? 'Modifiez la position ou les informations du spot.' : 'Placez le marqueur sur la carte ou recherchez un lieu pour ajouter un spot.'}
         </p>
 
-        {/* Search field */}
-        <div className="relative">
-          <input
-            type="text"
-            value={searchText}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Ex: 1095 ou Lutry"
-            className={inputClass}
-          />
-          {searching && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">...</div>
-          )}
+        {/* Map picker */}
+        <SpotLocationPicker
+          lat={newSpot?.lat}
+          lon={newSpot?.lon}
+          onChange={handleLocationChange}
+          onSearchSelect={handleSearchSelect}
+        />
 
-          {/* Dropdown results */}
-          {searchResults.length > 0 && (
-            <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-              {searchResults.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSelectResult(r)}
-                  className="w-full text-left px-3 py-2 text-sm text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                  dangerouslySetInnerHTML={{ __html: r.label }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* New spot form */}
-        {newSpot && (
+        {/* New spot form — visible once a location is set */}
+        {newSpot && newSpot.lat && newSpot.lon && (
           <div className="space-y-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600">
             <div>
               <label className={labelClass}>Nom</label>
@@ -672,6 +666,7 @@ function SpotsTab({ open }: { open: boolean }) {
                   const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
                   setNewSpot({ ...newSpot, name, id });
                 }}
+                placeholder="Nom du spot"
                 className={inputClass}
               />
             </div>
@@ -683,20 +678,16 @@ function SpotsTab({ open }: { open: boolean }) {
               </div>
               <div>
                 <label className={labelClass}>NPA</label>
-                {newSpot.npa ? (
-                  <input type="text" value={newSpot.npa} readOnly className={`${inputClass} bg-slate-100 dark:bg-slate-600 cursor-not-allowed`} />
-                ) : (
-                  <input
-                    type="number"
-                    value={newSpot.npa || ''}
-                    onChange={(e) => {
-                      const npa = parseInt(e.target.value, 10) || 0;
-                      setNewSpot({ ...newSpot, npa, pointId: npa >= 1000 ? `${npa}00` : '' });
-                    }}
-                    placeholder="Code postal (4 chiffres)"
-                    className={inputClass}
-                  />
-                )}
+                <input
+                  type="number"
+                  value={newSpot.npa || ''}
+                  onChange={(e) => {
+                    const npa = parseInt(e.target.value, 10) || 0;
+                    setNewSpot({ ...newSpot, npa, pointId: npa >= 1000 ? `${npa}00` : '' });
+                  }}
+                  placeholder="Auto-détecté..."
+                  className={inputClass}
+                />
               </div>
             </div>
 
@@ -712,8 +703,9 @@ function SpotsTab({ open }: { open: boolean }) {
             </div>
 
             <div>
-              <label className={labelClass}>Point ID</label>
+              <label className={labelClass}>Point ID (prévisions)</label>
               <input type="text" value={newSpot.pointId || ''} readOnly className={`${inputClass} bg-slate-100 dark:bg-slate-600 cursor-not-allowed`} />
+              <p className="mt-1 text-xs text-slate-400">Dérivé du NPA — modifiez le NPA pour changer la station de prévision</p>
             </div>
 
             <div>
@@ -731,7 +723,7 @@ function SpotsTab({ open }: { open: boolean }) {
             </div>
 
             <div>
-              <label className={labelClass}>Station SMN</label>
+              <label className={labelClass}>Station SMN (conditions actuelles)</label>
               <select
                 value={selectedStation}
                 onChange={(e) => setSelectedStation(e.target.value)}
@@ -759,20 +751,22 @@ function SpotsTab({ open }: { open: boolean }) {
 
             <div className="flex gap-2">
               <button
-                onClick={handleAddSpot}
+                onClick={handleSaveSpot}
                 disabled={adding}
                 className="flex-1 py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700 transition-colors disabled:opacity-50 text-sm"
               >
-                {adding ? 'Ajout...' : 'Ajouter le spot'}
+                {adding ? 'Enregistrement...' : editingSpotId ? 'Enregistrer' : 'Ajouter le spot'}
               </button>
               <button
-                onClick={() => { setNewSpot(null); setSelectedLake(''); setSelectedStation(''); setValidationError(null); }}
+                onClick={() => { setNewSpot(null); setSelectedLake(''); setSelectedStation(''); setValidationError(null); setEditingSpotId(null); setShowAddForm(false); }}
                 className="px-4 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors text-sm"
               >
                 Annuler
               </button>
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
 
@@ -783,12 +777,12 @@ function SpotsTab({ open }: { open: boolean }) {
         </p>
 
         <div className="space-y-1 max-h-64 overflow-y-auto">
-          {spots.map((s) => (
+          {[...spots].sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
             <div
               key={s.id}
-              className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-700/50"
+              className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
             >
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1" onClick={() => handleEditSpot(s)}>
                 <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
                   {s.name}
                 </p>
