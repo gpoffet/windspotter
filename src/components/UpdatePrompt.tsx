@@ -4,22 +4,34 @@ import { useState } from 'react';
 export function UpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
   } = useRegisterSW();
   const [updating, setUpdating] = useState(false);
 
   const handleUpdate = async () => {
     setUpdating(true);
+
+    // Safety net: force reload if nothing happens within 3 seconds
+    const timeout = setTimeout(() => window.location.reload(), 3000);
+
+    // Listen for controller change as a fast-path reload trigger
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      clearTimeout(timeout);
       window.location.reload();
     });
-    // Send SKIP_WAITING directly via native API — workbox-window's
-    // messageSkipWaiting() can silently no-op if its internal reference is stale
-    const registration = await navigator.serviceWorker.getRegistration();
-    if (registration?.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    } else {
-      // Waiting worker already activated or gone — just reload
-      window.location.reload();
+
+    try {
+      // Use the hook's built-in update: sends SKIP_WAITING + triggers reload
+      await updateServiceWorker(true);
+    } catch {
+      // Fallback: send SKIP_WAITING manually via native API
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration?.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      } else {
+        clearTimeout(timeout);
+        window.location.reload();
+      }
     }
   };
 
