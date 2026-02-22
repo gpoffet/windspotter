@@ -41,7 +41,7 @@ function isValidEndpoint(sub: PushSubscription): boolean {
 
 /**
  * Subscribe to push and persist in Firestore.
- * Extracted so it can be called both from enable() and from the "resume" path.
+ * Always creates a fresh subscription to avoid stale/invalid endpoints.
  * Returns an error message on failure, or null on success.
  */
 async function subscribePush(uid: string): Promise<string | null> {
@@ -50,23 +50,12 @@ async function subscribePush(uid: string): Promise<string | null> {
   const registration = await getRegistration();
   if (!registration) return 'Service worker non disponible.';
 
-  // Check if already subscribed
-  const existing = await registration.pushManager.getSubscription();
-  if (existing) {
-    if (isValidEndpoint(existing)) {
-      // Valid subscription — just make sure Firestore has it
-      try {
-        await setDoc(doc(db, 'pushSubscriptions', uid), {
-          subscription: existing.toJSON(),
-          updatedAt: new Date(),
-        });
-      } catch {
-        // Not critical
-      }
-      return null;
-    }
-    // Invalid/expired endpoint — unsubscribe and create a fresh one
-    await existing.unsubscribe().catch(() => {});
+  // Always unsubscribe existing subscription first to get a fresh endpoint
+  try {
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) await existing.unsubscribe();
+  } catch {
+    // Ignore unsubscribe errors
   }
 
   let subscription: PushSubscription;
@@ -95,7 +84,7 @@ async function subscribePush(uid: string): Promise<string | null> {
     });
   } catch (err) {
     console.error('Firestore write failed:', err);
-    return "Impossible de sauvegarder l'abonnement.";
+    return `Impossible de sauvegarder l'abonnement: ${err instanceof Error ? err.message : String(err)}`;
   }
 
   return null;
