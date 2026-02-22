@@ -286,22 +286,23 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="space-y-3 pt-2">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700 transition-colors disabled:opacity-50 text-sm"
-          >
-            {saving ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
-          <button
-            onClick={handleSignOut}
-            className="w-full py-2 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-sm font-medium"
-          >
-            Se déconnecter
-          </button>
-        </div>
+      </div>
+
+      {/* Actions – sticky bottom */}
+      <div className="sticky bottom-0 -mx-5 -mb-4 px-5 pb-4 pt-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 space-y-3">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700 transition-colors disabled:opacity-50 text-sm"
+        >
+          {saving ? 'Enregistrement...' : 'Enregistrer'}
+        </button>
+        <button
+          onClick={handleSignOut}
+          className="w-full py-2 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-sm font-medium"
+        >
+          Se déconnecter
+        </button>
       </div>
     </Modal>
     <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />

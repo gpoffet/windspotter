@@ -274,6 +274,25 @@ function App() {
 
       <UpdatePrompt />
 
+      <div className="bg-[#1877F2] dark:bg-[#1877F2]/90">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-3">
+          <svg className="w-5 h-5 text-white shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+          </svg>
+          <p className="text-white text-sm">
+            Suivez WindSpotter sur Facebook pour les dernières actus
+          </p>
+          <a
+            href="https://www.facebook.com/windspotterapp"
+            className="shrink-0 px-3 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white text-xs font-medium transition-colors"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Suivre
+          </a>
+        </div>
+      </div>
+
       <footer className="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-slate-400 dark:text-slate-500">
         Données{' '}
         <a
