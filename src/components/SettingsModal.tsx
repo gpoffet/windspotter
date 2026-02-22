@@ -4,6 +4,8 @@ import { useConfig } from '../hooks/useConfig';
 import { useNotifications } from '../hooks/useNotifications';
 import { Modal } from './Modal';
 import { AdminModal } from './AdminModal';
+import { EditProfileModal } from './EditProfileModal';
+import { ChangePasswordModal } from './ChangePasswordModal';
 import { DEFAULT_USER_PREFERENCES } from '../types/user';
 import type { ThemePreference } from '../types/user';
 
@@ -28,6 +30,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [themePreference, setThemePreference] = useState<ThemePreference>('system');
   const [saving, setSaving] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const notifications = useNotifications();
   const [togglingNotif, setTogglingNotif] = useState(false);
 
@@ -92,21 +96,40 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         )}
 
         {/* User info */}
-        <div className="flex items-center gap-3 pb-4 border-b border-slate-200 dark:border-slate-700">
-          <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-500/20 flex items-center justify-center">
-            <span className="text-teal-700 dark:text-teal-400 font-bold text-sm">
-              {displayName.charAt(0).toUpperCase()}
-            </span>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-900 dark:text-white">
-              {displayName}
-            </p>
-            {user?.displayName && user.email && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {user.email}
+        <div className="pb-4 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-500/20 flex items-center justify-center">
+              <span className="text-teal-700 dark:text-teal-400 font-bold text-sm">
+                {displayName.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-900 dark:text-white">
+                {displayName}
               </p>
-            )}
+              {user?.displayName && user.email && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {user.email}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-3 mt-3">
+            <button
+              type="button"
+              onClick={() => setEditProfileOpen(true)}
+              className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
+            >
+              Modifier le profil
+            </button>
+            <span className="text-xs text-slate-300 dark:text-slate-600">|</span>
+            <button
+              type="button"
+              onClick={() => setChangePasswordOpen(true)}
+              className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
+            >
+              Changer le mot de passe
+            </button>
           </div>
         </div>
 
@@ -306,6 +329,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       </div>
     </Modal>
     <AdminModal open={adminOpen} onClose={() => setAdminOpen(false)} />
+    <EditProfileModal open={editProfileOpen} onClose={() => setEditProfileOpen(false)} />
+    <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
     </>
   );
 }
