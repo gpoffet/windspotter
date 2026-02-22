@@ -29,6 +29,16 @@ function getRegistration(timeoutMs = 8000): Promise<ServiceWorkerRegistration | 
   ]);
 }
 
+/** Returns true if the push subscription endpoint looks valid. */
+function isValidEndpoint(sub: PushSubscription): boolean {
+  try {
+    const url = new URL(sub.endpoint);
+    return url.protocol === 'https:' && !url.hostname.includes('invalid');
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Subscribe to push and persist in Firestore.
  * Extracted so it can be called both from enable() and from the "resume" path.
@@ -43,16 +53,20 @@ async function subscribePush(uid: string): Promise<string | null> {
   // Check if already subscribed
   const existing = await registration.pushManager.getSubscription();
   if (existing) {
-    // Already subscribed — just make sure Firestore has the subscription
-    try {
-      await setDoc(doc(db, 'pushSubscriptions', uid), {
-        subscription: existing.toJSON(),
-        updatedAt: new Date(),
-      });
-    } catch {
-      // Not critical — subscription works even if Firestore write fails here
+    if (isValidEndpoint(existing)) {
+      // Valid subscription — just make sure Firestore has it
+      try {
+        await setDoc(doc(db, 'pushSubscriptions', uid), {
+          subscription: existing.toJSON(),
+          updatedAt: new Date(),
+        });
+      } catch {
+        // Not critical
+      }
+      return null;
     }
-    return null;
+    // Invalid/expired endpoint — unsubscribe and create a fresh one
+    await existing.unsubscribe().catch(() => {});
   }
 
   let subscription: PushSubscription;
@@ -142,10 +156,10 @@ export function useNotifications(): UseNotificationsResult {
           }
         } else {
           if (hasPending) localStorage.removeItem(PENDING_SUBSCRIBE_KEY);
-          // Normal check: see if a push subscription already exists
+          // Normal check: see if a valid push subscription already exists
           const reg = await getRegistration();
           const sub = reg ? await reg.pushManager.getSubscription() : null;
-          if (!cancelled) setEnabled(sub !== null);
+          if (!cancelled) setEnabled(sub !== null && isValidEndpoint(sub));
         }
       } catch {
         if (!cancelled) setEnabled(false);
