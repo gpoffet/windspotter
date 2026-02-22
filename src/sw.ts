@@ -7,7 +7,8 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Workbox precaching — vite-plugin-pwa injects the manifest here
-precacheAndRoute(self.__WB_MANIFEST);
+const manifest = self.__WB_MANIFEST;
+precacheAndRoute(manifest);
 
 // Runtime caching for Firestore API
 registerRoute(
@@ -19,15 +20,15 @@ registerRoute(
   }),
 );
 
-// Claim clients immediately on activate (replaces workbox clientsClaim option)
+// Claim clients immediately on activate
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// Support skipWaiting from the client (used by UpdatePrompt via workbox-window)
+// Support skipWaiting from the client
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+    event.waitUntil(self.skipWaiting());
   }
 });
 

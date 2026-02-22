@@ -1,39 +1,56 @@
-import { useRegisterSW } from 'virtual:pwa-register/react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export function UpdatePrompt() {
-  const {
-    needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW();
+  const [needRefresh, setNeedRefresh] = useState(false);
   const [updating, setUpdating] = useState(false);
 
-  const handleUpdate = async () => {
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Already a waiting worker → show prompt
+      if (reg.waiting) {
+        setNeedRefresh(true);
+        return;
+      }
+
+      // Listen for future updates
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+
+        newWorker.addEventListener('statechange', () => {
+          // Show prompt only when the new worker is installed AND there's
+          // already a controller (= this is an update, not a first install)
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            setNeedRefresh(true);
+          }
+        });
+      });
+    });
+  }, []);
+
+  const handleUpdate = useCallback(async () => {
     setUpdating(true);
 
-    // Safety net: force reload if nothing happens within 3 seconds
-    const timeout = setTimeout(() => window.location.reload(), 3000);
+    const registration = await navigator.serviceWorker.getRegistration();
 
-    // Listen for controller change as a fast-path reload trigger
+    // Reload when the new SW takes control
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      clearTimeout(timeout);
       window.location.reload();
     });
 
-    try {
-      // Use the hook's built-in update: sends SKIP_WAITING + triggers reload
-      await updateServiceWorker(true);
-    } catch {
-      // Fallback: send SKIP_WAITING manually via native API
-      const registration = await navigator.serviceWorker.getRegistration();
-      if (registration?.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      } else {
-        clearTimeout(timeout);
-        window.location.reload();
-      }
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
-  };
+
+    // Fallback: if controllerchange never fires, unregister and hard reload
+    setTimeout(async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.unregister();
+      window.location.reload();
+    }, 2000);
+  }, []);
 
   if (!needRefresh) return null;
 
