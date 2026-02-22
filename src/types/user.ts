@@ -1,10 +1,13 @@
 import type { User } from 'firebase/auth';
 
+export type ThemePreference = 'light' | 'dark' | 'system';
+
 export interface UserPreferences {
   windSpeedMin: number;
   gustMin: number;
   forecastDays: number;
   selectedSpots?: string[];
+  themePreference?: ThemePreference;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {

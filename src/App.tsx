@@ -4,6 +4,7 @@ import { useConfig } from './hooks/useConfig';
 import { useCurrentWeather } from './hooks/useCurrentWeather';
 import { useEffectiveConfig } from './hooks/useEffectiveConfig';
 import { useAuth } from './contexts/AuthContext';
+import { useTheme } from './hooks/useTheme';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { ViewToggle } from './components/ViewToggle';
@@ -35,6 +36,7 @@ function App() {
   const { spots: spotConfigs, navigability: globalNavigability, loading: configLoading } = useConfig();
   const navigability = useEffectiveConfig(globalNavigability);
   const { user, loading: authLoading, preferences } = useAuth();
+  useTheme(preferences?.themePreference);
   const forecastDays = preferences?.forecastDays ?? 2;
   const [showAuthFromBanner, setShowAuthFromBanner] = useState(false);
   const [showSettingsFromBanner, setShowSettingsFromBanner] = useState(false);
