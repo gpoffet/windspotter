@@ -121,7 +121,9 @@ export const sendTestNotification = onCall(
       );
       return { success: true };
     } catch (err: unknown) {
+      console.error('sendTestNotification failed:', err);
       const statusCode = (err as { statusCode?: number }).statusCode;
+      const body = (err as { body?: string }).body;
       if (statusCode === 410 || statusCode === 404) {
         await subSnap.ref.delete();
         throw new HttpsError(
@@ -129,7 +131,10 @@ export const sendTestNotification = onCall(
           'Souscription expirée. Réactive les notifications dans les paramètres.',
         );
       }
-      throw new HttpsError('internal', 'Échec de l\'envoi de la notification');
+      const detail = statusCode
+        ? `HTTP ${statusCode}${body ? ': ' + body : ''}`
+        : (err instanceof Error ? err.message : String(err));
+      throw new HttpsError('internal', `Échec de l'envoi: ${detail}`);
     }
   },
 );
