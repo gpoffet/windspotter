@@ -33,7 +33,7 @@ interface AdminUser {
 }
 
 const tabClass = (active: boolean) =>
-  `px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+  `px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
     active
       ? 'bg-teal-600 text-white'
       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -60,7 +60,7 @@ export function AdminModal({ open, onClose }: AdminModalProps) {
     <Modal open={open} onClose={onClose} title="Administration">
       <div className="space-y-4">
         {/* Tab navigation */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           <button className={tabClass(tab === 'settings')} onClick={() => setTab('settings')}>
             Paramètres
           </button>
