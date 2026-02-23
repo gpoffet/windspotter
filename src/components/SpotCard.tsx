@@ -1,4 +1,4 @@
-import type { SpotForecast, NavigabilityConfig, CurrentWeather } from '../types/forecast';
+import type { SpotForecast, NavigabilityConfig, NavigableSlot, CurrentWeather } from '../types/forecast';
 import { DayForecast } from './DayForecast';
 import { dayLabel, lakeName } from '../utils/format';
 
@@ -9,6 +9,9 @@ interface SpotCardProps {
   currentWeather: CurrentWeather | null;
   stationId: string | null;
   forecastDays: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+  bestSlot: NavigableSlot | null;
 }
 
 /** SMN station metadata for tooltip display */
@@ -48,12 +51,25 @@ function WindArrow({ dir }: { dir: number }) {
   );
 }
 
-export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays }: SpotCardProps) {
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-300 ${expanded ? 'rotate-90' : ''}`}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
+      <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays, isExpanded, onToggle, bestSlot }: SpotCardProps) {
   // Show today + future days only
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const displayDays = spot.days.filter((d) => d.date >= todayStr).slice(0, forecastDays);
   const hasNavigableDay = displayDays.some((d) => d.isNavigable);
+  const cardId = `spot-body-${spot.pointId}`;
 
   return (
     <div
@@ -65,11 +81,27 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
         }
       `}
     >
-      {/* Spot header */}
-      <div className="px-4 pt-4 pb-2 flex items-start justify-between">
-        <div>
+      {/* Clickable header / summary — always visible */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+        aria-controls={cardId}
+        className="w-full text-left px-4 py-3 flex items-center gap-3 cursor-pointer select-none hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors rounded-xl"
+      >
+        {/* Navigability dot */}
+        <span
+          className={`shrink-0 w-2.5 h-2.5 rounded-full ${
+            hasNavigableDay
+              ? 'bg-green-500 dark:bg-green-400'
+              : 'bg-slate-300 dark:bg-slate-600'
+          }`}
+        />
+
+        {/* Spot name + lake */}
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
               {spot.name}
             </h3>
             {currentWeather && currentWeather.windSpeed !== null && (() => {
@@ -82,7 +114,7 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
                 : undefined;
               return (
               <span
-                className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 cursor-default"
+                className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0"
                 title={tooltip}
               >
                 {currentWeather.windDir !== null && (
@@ -101,37 +133,58 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
             })()}
           </div>
           {(spot.waterBodyName || spot.lake) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
               {spot.waterBodyName ?? lakeName(spot.lake)}
             </p>
           )}
         </div>
-        {spot.waterTemp.current !== null && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10">
-            <span className="text-sm">🌊</span>
-            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-              {spot.waterTemp.current}°C
-            </span>
-          </div>
+
+        {/* Best slot summary (collapsed only) */}
+        {!isExpanded && bestSlot && (
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 shrink-0">
+            {bestSlot.avgSpeed}–{bestSlot.avgGust} km/h {bestSlot.direction} · {bestSlot.start}h–{bestSlot.end}h
+          </span>
         )}
-      </div>
 
-      {/* Day forecasts */}
-      <div className="px-4 pb-4 space-y-4">
-        {displayDays.map((day) => (
-          <DayForecast
-            key={day.date}
-            day={day}
-            label={dayLabel(day.date)}
-            navigability={navigability}
-            yAxisMax={yAxisMax}
-          />
-        ))}
+        {/* Water temp badge */}
+        {spot.waterTemp.current !== null && (
+          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-sm font-semibold text-blue-600 dark:text-blue-400 shrink-0">
+            🌊 {spot.waterTemp.current}°C
+          </span>
+        )}
 
-        {displayDays.length === 0 && (
-          <p className="text-sm text-slate-400 py-4 text-center">
-            Aucune donnée disponible
-          </p>
+        {/* Chevron */}
+        <Chevron expanded={isExpanded} />
+      </button>
+
+      {/* Collapsible body */}
+      <div
+        id={cardId}
+        role="region"
+        aria-hidden={!isExpanded}
+        className={`overflow-hidden transition-[max-height] duration-300 ease-out ${
+          isExpanded ? 'max-h-[2000px]' : 'max-h-0'
+        }`}
+      >
+        {/* Only render heavy content (charts) when expanded for performance */}
+        {isExpanded && (
+          <div className="px-4 pb-4 space-y-4">
+            {displayDays.map((day) => (
+              <DayForecast
+                key={day.date}
+                day={day}
+                label={dayLabel(day.date)}
+                navigability={navigability}
+                yAxisMax={yAxisMax}
+              />
+            ))}
+
+            {displayDays.length === 0 && (
+              <p className="text-sm text-slate-400 py-4 text-center">
+                Aucune donnée disponible
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>

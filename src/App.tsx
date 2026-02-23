@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForecast } from './hooks/useForecast';
 import { useConfig } from './hooks/useConfig';
 import { useCurrentWeather } from './hooks/useCurrentWeather';
@@ -17,18 +17,25 @@ import type { SpotConfig, SpotForecast } from './types/forecast';
 
 const SpotMap = lazy(() => import('./components/SpotMap'));
 
-/**
- * Sort spots by navigability score (navigable spots first).
- * Today weighs 4x, tomorrow 2x, day after 1x.
- */
-function sortByNavigability(spots: SpotForecast[]): SpotForecast[] {
-  return [...spots].sort((a, b) => {
-    const score = (s: SpotForecast) =>
-      (s.days[0]?.isNavigable ? 4 : 0) +
-      (s.days[1]?.isNavigable ? 2 : 0) +
-      (s.days[2]?.isNavigable ? 1 : 0);
-    return score(b) - score(a);
-  });
+/** Check if a spot has any navigable slot in displayed days */
+function isSpotNavigable(spot: SpotForecast, forecastDays: number): boolean {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return spot.days
+    .filter((d) => d.date >= todayStr)
+    .slice(0, forecastDays)
+    .some((d) => d.isNavigable);
+}
+
+/** Get the best navigable slot (first slot of first navigable day) for a spot */
+function getBestSlot(spot: SpotForecast, forecastDays: number) {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const displayDays = spot.days.filter((d) => d.date >= todayStr).slice(0, forecastDays);
+  for (const day of displayDays) {
+    if (day.slots.length > 0) return day.slots[0];
+  }
+  return null;
 }
 
 function App() {
@@ -41,6 +48,10 @@ function App() {
   const [showAuthFromBanner, setShowAuthFromBanner] = useState(false);
   const [showSettingsFromBanner, setShowSettingsFromBanner] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+
+  // Accordion state: which spots are expanded (spotPointId → boolean)
+  const [expandedSpots, setExpandedSpots] = useState<Record<string, boolean>>({});
+  const expandedInitializedRef = useRef(false);
 
   const updatedAt = data?.updatedAt?.toMillis() ?? null;
   const isLoading = loading || configLoading;
@@ -102,12 +113,43 @@ function App() {
 
   const currentWeather = useCurrentWeather(stationIds);
 
+  // Initialize expanded state: navigable spots open, non-navigable closed
+  useEffect(() => {
+    if (expandedInitializedRef.current || enrichedSpots.length === 0) return;
+    const defaults: Record<string, boolean> = {};
+    for (const spot of enrichedSpots) {
+      defaults[spot.pointId] = isSpotNavigable(spot, forecastDays);
+    }
+    setExpandedSpots(defaults);
+    expandedInitializedRef.current = true;
+  }, [enrichedSpots, forecastDays]);
+
+  // Persist expanded state to sessionStorage (only after initialization)
+  useEffect(() => {
+    if (!expandedInitializedRef.current) return;
+    sessionStorage.setItem('windspotter_expanded', JSON.stringify(expandedSpots));
+  }, [expandedSpots]);
+
+  const toggleSpot = useCallback((pointId: string) => {
+    setExpandedSpots((prev) => ({ ...prev, [pointId]: !prev[pointId] }));
+  }, []);
+
   // Filter spots based on user preference
   const visibleSpots = useMemo(() => {
     const sel = preferences?.selectedSpots;
     if (!sel || sel.length === 0) return enrichedSpots;
     return enrichedSpots.filter((s) => sel.includes(s.pointId));
   }, [enrichedSpots, preferences?.selectedSpots]);
+
+  const allExpanded = visibleSpots.length > 0 && visibleSpots.every((s) => expandedSpots[s.pointId]);
+  const toggleAll = useCallback(() => {
+    const newVal = !allExpanded;
+    setExpandedSpots((prev) => {
+      const next = { ...prev };
+      for (const s of visibleSpots) next[s.pointId] = newVal;
+      return next;
+    });
+  }, [allExpanded, visibleSpots]);
 
   // Global max gust across all spots/days so every chart shares the same Y scale
   const globalMaxGust = useMemo(() => {
@@ -122,6 +164,16 @@ function App() {
     // Round up to next multiple of 10 for a clean axis
     return Math.ceil(max / 10) * 10;
   }, [enrichedSpots]);
+
+  // Split visible spots into navigable / non-navigable, alphabetical within each
+  const navigableSpots = useMemo(
+    () => [...visibleSpots].filter((s) => isSpotNavigable(s, forecastDays)).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    [visibleSpots, forecastDays],
+  );
+  const nonNavigableSpots = useMemo(
+    () => [...visibleSpots].filter((s) => !isSpotNavigable(s, forecastDays)).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    [visibleSpots, forecastDays],
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
@@ -228,19 +280,68 @@ function App() {
 
             {viewMode === 'list' ? (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {sortByNavigability(visibleSpots).map((spot) => (
-                    <SpotCard
-                      key={spot.pointId}
-                      spot={spot}
-                      navigability={navigability}
-                      yAxisMax={globalMaxGust}
-                      currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
-                      stationId={stationByPointId.get(spot.pointId) ?? null}
-                      forecastDays={forecastDays}
-                    />
-                  ))}
+                <div className="flex justify-end mb-2">
+                  <button
+                    onClick={toggleAll}
+                    className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                  >
+                    {allExpanded ? 'Tout fermer' : 'Tout ouvrir'}
+                  </button>
                 </div>
+                {/* Navigable spots section */}
+                {navigableSpots.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    {navigableSpots.map((spot) => (
+                      <SpotCard
+                        key={spot.pointId}
+                        spot={spot}
+                        navigability={navigability}
+                        yAxisMax={globalMaxGust}
+                        currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
+                        stationId={stationByPointId.get(spot.pointId) ?? null}
+                        forecastDays={forecastDays}
+                        isExpanded={!!expandedSpots[spot.pointId]}
+                        onToggle={() => toggleSpot(spot.pointId)}
+                        bestSlot={getBestSlot(spot, forecastDays)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-4">
+                    Aucun spot navigable sur la période
+                  </p>
+                )}
+
+                {/* Separator */}
+                {navigableSpots.length > 0 && nonNavigableSpots.length > 0 && (
+                  <div className="flex items-center gap-3 my-6">
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                    <span className="text-sm text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                      Pas navigable ({nonNavigableSpots.length})
+                    </span>
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                )}
+
+                {/* Non-navigable spots section */}
+                {nonNavigableSpots.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    {nonNavigableSpots.map((spot) => (
+                      <SpotCard
+                        key={spot.pointId}
+                        spot={spot}
+                        navigability={navigability}
+                        yAxisMax={globalMaxGust}
+                        currentWeather={currentWeather.get(stationByPointId.get(spot.pointId) ?? '') ?? null}
+                        stationId={stationByPointId.get(spot.pointId) ?? null}
+                        forecastDays={forecastDays}
+                        isExpanded={!!expandedSpots[spot.pointId]}
+                        onToggle={() => toggleSpot(spot.pointId)}
+                        bestSlot={getBestSlot(spot, forecastDays)}
+                      />
+                    ))}
+                  </div>
+                )}
 
                 {visibleSpots.length < enrichedSpots.length && (
                   <div className="mt-6 text-center">
