@@ -7,9 +7,10 @@ interface HeaderProps {
   updatedAt: number | null; // timestamp in ms
   refreshing: boolean;
   onRefresh: () => void;
+  onSettingsAuthNeeded?: () => void;
 }
 
-export function Header({ updatedAt, refreshing, onRefresh }: HeaderProps) {
+export function Header({ updatedAt, refreshing, onRefresh, onSettingsAuthNeeded }: HeaderProps) {
   return (
     <header className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -45,7 +46,7 @@ export function Header({ updatedAt, refreshing, onRefresh }: HeaderProps) {
               <path d="M21 3v6h-6" />
             </svg>
           </button>
-          <SettingsButton />
+          <SettingsButton onAuthNeeded={onSettingsAuthNeeded} />
         </div>
       </div>
     </header>

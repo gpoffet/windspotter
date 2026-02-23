@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthModal } from './AuthModal';
 import { SettingsModal } from './SettingsModal';
 
-export function SettingsButton() {
+export function SettingsButton({ onAuthNeeded }: { onAuthNeeded?: () => void }) {
   const { user } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -11,6 +11,8 @@ export function SettingsButton() {
   function handleClick() {
     if (user) {
       setShowSettings(true);
+    } else if (onAuthNeeded) {
+      onAuthNeeded();
     } else {
       setShowAuth(true);
     }
@@ -25,7 +27,7 @@ export function SettingsButton() {
     <>
       {!user && (
         <button
-          onClick={() => setShowAuth(true)}
+          onClick={() => (onAuthNeeded ? onAuthNeeded() : setShowAuth(true))}
           className="text-xs text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
         >
           Connexion

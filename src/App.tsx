@@ -11,8 +11,11 @@ import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { ViewToggle } from './components/ViewToggle';
 import { AuthModal } from './components/AuthModal';
 import { SettingsModal } from './components/SettingsModal';
+import { AccountPromoModal } from './components/AccountPromoModal';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { InstallBanner } from './components/InstallBanner';
+import { useAccountPromo } from './hooks/useAccountPromo';
+import type { PromoTrigger } from './hooks/useAccountPromo';
 import { calculateSlots } from './utils/navigability';
 import type { SpotConfig, SpotForecast } from './types/forecast';
 
@@ -46,9 +49,6 @@ function App() {
   const { user, loading: authLoading, preferences } = useAuth();
   useTheme(preferences?.themePreference);
   const forecastDays = preferences?.forecastDays ?? 2;
-  const [showAuthFromBanner, setShowAuthFromBanner] = useState(false);
-  const [showAuthFromFavorite, setShowAuthFromFavorite] = useState(false);
-  const [showSettingsFromBanner, setShowSettingsFromBanner] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const { isFavorite, toggleFavorite } = useFavorites();
 
@@ -187,9 +187,58 @@ function App() {
     [visibleSpots, forecastDays, favThenAlpha],
   );
 
+  // Account promo flow (replaces separate auth modal states)
+  const {
+    isOpen: promoOpen,
+    trigger: promoTrigger,
+    promptAccountCreation,
+    closePromo,
+    shouldShowProactive,
+  } = useAccountPromo({ user, hasNavigableSpots: navigableSpots.length > 0 });
+
+  const [authView, setAuthView] = useState<'login' | 'signup' | null>(null);
+  const [showSettingsAfterAuth, setShowSettingsAfterAuth] = useState(false);
+  const authOriginTriggerRef = useRef<PromoTrigger | null>(null);
+
+  // Proactive promo: show after 3s delay once data is ready
+  const proactiveTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!shouldShowProactive || proactiveTriggeredRef.current) return;
+    const timer = setTimeout(() => {
+      proactiveTriggeredRef.current = true;
+      promptAccountCreation('proactive');
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [shouldShowProactive, promptAccountCreation]);
+
+  function handlePromoCreateAccount() {
+    authOriginTriggerRef.current = promoTrigger;
+    closePromo();
+    setAuthView('signup');
+  }
+
+  function handlePromoLogin() {
+    authOriginTriggerRef.current = promoTrigger;
+    closePromo();
+    setAuthView('login');
+  }
+
+  function handleAuthSuccess() {
+    setAuthView(null);
+    if (authOriginTriggerRef.current === 'default' || authOriginTriggerRef.current === 'settings') {
+      setShowSettingsAfterAuth(true);
+    }
+    authOriginTriggerRef.current = null;
+  }
+
+  function handleAuthClose() {
+    setAuthView(null);
+    authOriginTriggerRef.current = null;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
-      <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={() => refresh()} />
+      <Header updatedAt={updatedAt} refreshing={refreshing} onRefresh={() => refresh()} onSettingsAuthNeeded={() => promptAccountCreation('settings')} />
 
       <InstallBanner />
 
@@ -201,7 +250,7 @@ function App() {
               Crée ton compte gratuit et configure les prévisions à ton besoin
             </p>
             <button
-              onClick={() => setShowAuthFromBanner(true)}
+              onClick={() => promptAccountCreation('default')}
               className="shrink-0 px-3 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white text-xs font-medium transition-colors"
             >
               Créer un compte
@@ -210,24 +259,22 @@ function App() {
         </div>
       )}
 
-      <AuthModal
-        open={showAuthFromBanner}
-        onClose={() => setShowAuthFromBanner(false)}
-        initialView="signup"
-        onAuthenticated={() => {
-          setShowAuthFromBanner(false);
-          setShowSettingsFromBanner(true);
-        }}
+      <AccountPromoModal
+        isOpen={promoOpen}
+        onClose={closePromo}
+        onCreateAccount={handlePromoCreateAccount}
+        onLogin={handlePromoLogin}
+        trigger={promoTrigger}
       />
       <AuthModal
-        open={showAuthFromFavorite}
-        onClose={() => setShowAuthFromFavorite(false)}
-        initialView="signup"
-        onAuthenticated={() => setShowAuthFromFavorite(false)}
+        open={authView !== null}
+        onClose={handleAuthClose}
+        initialView={authView ?? 'login'}
+        onAuthenticated={handleAuthSuccess}
       />
       <SettingsModal
-        open={showSettingsFromBanner}
-        onClose={() => setShowSettingsFromBanner(false)}
+        open={showSettingsAfterAuth}
+        onClose={() => setShowSettingsAfterAuth(false)}
       />
 
       <main className="max-w-6xl mx-auto px-4 py-6">
@@ -322,7 +369,7 @@ function App() {
                         onToggle={() => toggleSpot(spot.pointId)}
                         bestSlot={getBestSlot(spot, forecastDays)}
                         isFavorite={isFavorite(spot.pointId)}
-                        onToggleFavorite={() => toggleFavorite(spot.pointId, () => setShowAuthFromFavorite(true))}
+                        onToggleFavorite={() => toggleFavorite(spot.pointId, () => promptAccountCreation('favorites'))}
                       />
                     ))}
                   </div>
@@ -359,7 +406,7 @@ function App() {
                         onToggle={() => toggleSpot(spot.pointId)}
                         bestSlot={getBestSlot(spot, forecastDays)}
                         isFavorite={isFavorite(spot.pointId)}
-                        onToggleFavorite={() => toggleFavorite(spot.pointId, () => setShowAuthFromFavorite(true))}
+                        onToggleFavorite={() => toggleFavorite(spot.pointId, () => promptAccountCreation('favorites'))}
                       />
                     ))}
                   </div>
@@ -368,7 +415,7 @@ function App() {
                 {visibleSpots.length < enrichedSpots.length && (
                   <div className="mt-6 text-center">
                     <button
-                      onClick={() => setShowSettingsFromBanner(true)}
+                      onClick={() => setShowSettingsAfterAuth(true)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
                     >
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
