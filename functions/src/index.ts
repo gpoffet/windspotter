@@ -54,6 +54,14 @@ export const refreshForecast = onCall(
     const spotsConfig = spotsSnap.data()!.spots as SpotConfig[];
     const navConfig = navSnap.data() as NavigabilityConfig;
 
+    // Load water bodies for alplakesId resolution
+    const waterBodiesSnap = await db.collection('waterBodies').get();
+    const waterBodiesMap = new Map<string, { name: string; alplakesId?: string }>();
+    for (const wbDoc of waterBodiesSnap.docs) {
+      const data = wbDoc.data();
+      waterBodiesMap.set(wbDoc.id, { name: data.name, alplakesId: data.alplakesId });
+    }
+
     // Step 1: Check if current data is still fresh (skip if forced)
     if (!force) {
       const existingSnap = await db.doc(FORECAST_DOC).get();
@@ -81,7 +89,22 @@ export const refreshForecast = onCall(
     try {
       // Step 3: Fetch all data
       const targetPointIds = new Set(spotsConfig.map((s) => s.pointId));
-      const uniqueLakes = [...new Set(spotsConfig.map((s) => s.alplakesKey))];
+
+      // Resolve alplakes keys from water bodies + backward compat
+      const alplakesKeysBySpot = new Map<string, string>();
+      for (const spot of spotsConfig) {
+        let alplakesKey: string | undefined;
+        if (spot.waterBodyId) {
+          alplakesKey = waterBodiesMap.get(spot.waterBodyId)?.alplakesId;
+        }
+        if (!alplakesKey && spot.alplakesKey) {
+          alplakesKey = spot.alplakesKey;
+        }
+        if (alplakesKey) {
+          alplakesKeysBySpot.set(spot.pointId, alplakesKey);
+        }
+      }
+      const uniqueLakes = [...new Set(alplakesKeysBySpot.values())];
 
       const [meteoResult, waterTemps] = await Promise.all([
         fetchAllMeteoData(targetPointIds),
@@ -90,7 +113,7 @@ export const refreshForecast = onCall(
 
       // Step 4: Build forecast for each spot
       const spots: SpotForecast[] = spotsConfig.map((spot) =>
-        buildSpotForecast(spot, meteoResult.data, waterTemps, navConfig),
+        buildSpotForecast(spot, meteoResult.data, waterTemps, navConfig, waterBodiesMap, alplakesKeysBySpot.get(spot.pointId)),
       );
 
       // Step 5: Write to Firestore
@@ -116,9 +139,13 @@ function buildSpotForecast(
   meteoData: MergedData,
   waterTemps: Map<string, { current: number | null; depth: number }>,
   navConfig: NavigabilityConfig,
+  waterBodiesMap: Map<string, { name: string; alplakesId?: string }>,
+  alplakesKeyForSpot: string | undefined,
 ): SpotForecast {
   const spotData = meteoData.get(spot.pointId);
-  const waterTemp = waterTemps.get(spot.alplakesKey) ?? { current: null, depth: 1 };
+  const waterTemp = alplakesKeyForSpot
+    ? (waterTemps.get(alplakesKeyForSpot) ?? { current: null, depth: 1 })
+    : { current: null, depth: 1 };
 
   // Group hourly data by local date
   const dayMap = new Map<string, HourlyData[]>();
@@ -170,6 +197,10 @@ function buildSpotForecast(
     };
   });
 
+  const waterBodyName = spot.waterBodyId
+    ? waterBodiesMap.get(spot.waterBodyId)?.name
+    : undefined;
+
   return {
     name: spot.name,
     pointId: spot.pointId,
@@ -177,6 +208,7 @@ function buildSpotForecast(
     lat: spot.lat,
     lon: spot.lon,
     lake: spot.lake,
+    ...(waterBodyName && { waterBodyName }),
     waterTemp,
     days,
   };

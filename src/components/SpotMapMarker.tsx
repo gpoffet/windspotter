@@ -85,7 +85,9 @@ export function SpotMapMarker({ spot, currentWeather, selectedDate, selectedHour
         <div className="min-w-[180px] text-sm">
           {/* Name + lake */}
           <div className="font-bold text-slate-900 text-base">{spot.name}</div>
-          <div className="text-slate-500 text-xs mb-2">{lakeName(spot.lake)}</div>
+          {(spot.waterBodyName || spot.lake) && (
+            <div className="text-slate-500 text-xs mb-2">{spot.waterBodyName ?? lakeName(spot.lake)}</div>
+          )}
 
           {/* Water temp */}
           {spot.waterTemp.current != null && (

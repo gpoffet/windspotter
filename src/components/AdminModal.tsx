@@ -1,12 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
 import { Modal } from './Modal';
 import { SpotLocationPicker, type SearchResult } from './SpotLocationPicker';
-import type { NavigabilityConfig, SpotConfig } from '../types/forecast';
+import type { NavigabilityConfig, SpotConfig, WaterBody, WaterBodyType } from '../types/forecast';
 
-type Tab = 'settings' | 'users' | 'spots';
+type Tab = 'settings' | 'users' | 'spots' | 'waterBodies';
+
+const WATER_BODY_TYPE_LABELS: Record<WaterBodyType, string> = {
+  lake: 'Lac',
+  sea: 'Mer',
+  ocean: 'Océan',
+  river: 'Rivière',
+  quarry_lake: 'Gravière',
+  pond: 'Étang',
+  other: 'Autre',
+};
 
 interface AdminModalProps {
   open: boolean;
@@ -50,11 +60,15 @@ export function AdminModal({ open, onClose }: AdminModalProps) {
           <button className={tabClass(tab === 'spots')} onClick={() => setTab('spots')}>
             Spots
           </button>
+          <button className={tabClass(tab === 'waterBodies')} onClick={() => setTab('waterBodies')}>
+            Plans d'eau
+          </button>
         </div>
 
         {tab === 'settings' && <SettingsTab open={open} />}
         {tab === 'users' && <UsersTab open={open} />}
         {tab === 'spots' && <SpotsTab open={open} />}
+        {tab === 'waterBodies' && <WaterBodiesTab open={open} />}
       </div>
     </Modal>
   );
@@ -380,13 +394,6 @@ const SMN_STATIONS: Record<string, { name: string; location: string; lat: number
   BIE: { name: 'Bière', location: 'Bière, VD', lat: 46.5249, lon: 6.3424 },
 };
 
-const LAKES = [
-  { value: 'geneva', label: 'Lac Léman', lat: 46.45, lon: 6.55 },
-  { value: 'neuchatel', label: 'Lac de Neuchâtel', lat: 46.90, lon: 6.85 },
-  { value: 'joux', label: 'Lac de Joux', lat: 46.63, lon: 6.28 },
-  { value: 'bret', label: 'Lac de Bret', lat: 46.53, lon: 6.79 },
-];
-
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -396,16 +403,6 @@ function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): num
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function findNearestLake(lat: number, lon: number): string {
-  let nearest = '';
-  let minDist = Infinity;
-  for (const l of LAKES) {
-    const d = distanceKm(lat, lon, l.lat, l.lon);
-    if (d < minDist) { minDist = d; nearest = l.value; }
-  }
-  return nearest;
 }
 
 function findNearestStation(lat: number, lon: number): string {
@@ -420,6 +417,7 @@ function findNearestStation(lat: number, lon: number): string {
 
 function SpotsTab({ open }: { open: boolean }) {
   const [spots, setSpots] = useState<SpotConfig[]>([]);
+  const [waterBodies, setWaterBodies] = useState<WaterBody[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -431,7 +429,7 @@ function SpotsTab({ open }: { open: boolean }) {
 
   // Spot form
   const [newSpot, setNewSpot] = useState<Partial<SpotConfig> | null>(null);
-  const [selectedLake, setSelectedLake] = useState('');
+  const [selectedWaterBodyId, setSelectedWaterBodyId] = useState('');
   const [selectedStation, setSelectedStation] = useState('');
   const [adding, setAdding] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -443,12 +441,15 @@ function SpotsTab({ open }: { open: boolean }) {
     if (!open) return;
     setLoading(true);
     setError(null);
-    getDoc(doc(db, 'config', 'spots'))
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setSpots(data.spots as SpotConfig[]);
+    Promise.all([
+      getDoc(doc(db, 'config', 'spots')),
+      getDocs(collection(db, 'waterBodies')),
+    ])
+      .then(([spotsSnap, wbSnap]) => {
+        if (spotsSnap.exists()) {
+          setSpots(spotsSnap.data().spots as SpotConfig[]);
         }
+        setWaterBodies(wbSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as WaterBody[]);
         setLoading(false);
       })
       .catch(() => {
@@ -460,7 +461,6 @@ function SpotsTab({ open }: { open: boolean }) {
   function handleLocationChange(lat: number, lon: number) {
     setNewSpot((prev) => ({ ...(prev ?? {}), lat, lon }));
     setSelectedStation(findNearestStation(lat, lon));
-    setSelectedLake(findNearestLake(lat, lon));
     setValidationError(null);
 
     // Debounced reverse geocoding for NPA via MapServer identify
@@ -522,13 +522,12 @@ function SpotsTab({ open }: { open: boolean }) {
       pointId: npa ? `${npa}00` : '',
     });
     setSelectedStation(findNearestStation(lat, lon));
-    setSelectedLake(findNearestLake(lat, lon));
     setValidationError(null);
   }
 
   function handleEditSpot(spot: SpotConfig) {
     setNewSpot({ ...spot });
-    setSelectedLake(spot.lake);
+    setSelectedWaterBodyId(spot.waterBodyId ?? spot.lake ?? '');
     setSelectedStation(spot.stationId);
     setEditingSpotId(spot.id);
     setShowAddForm(true);
@@ -541,7 +540,6 @@ function SpotsTab({ open }: { open: boolean }) {
     if (!newSpot.id?.trim()) return "L'identifiant est requis.";
     if (!newSpot.npa || newSpot.npa < 1000 || newSpot.npa > 9999) return 'Le NPA doit être un code postal suisse valide (4 chiffres).';
     if (!newSpot.lat || !newSpot.lon) return 'Les coordonnées sont requises.';
-    if (!selectedLake) return 'Sélectionnez un lac.';
     if (!selectedStation) return 'Sélectionnez une station SMN.';
     const otherSpots = editingSpotId ? spots.filter((s) => s.id !== editingSpotId) : spots;
     if (otherSpots.some((s) => s.id === newSpot.id)) return `Un spot avec l'identifiant "${newSpot.id}" existe déjà.`;
@@ -566,8 +564,9 @@ function SpotsTab({ open }: { open: boolean }) {
         lat: newSpot!.lat!,
         lon: newSpot!.lon!,
         stationId: selectedStation,
-        lake: selectedLake,
-        alplakesKey: selectedLake,
+        lake: selectedWaterBodyId || '',
+        alplakesKey: selectedWaterBodyId || '',
+        ...(selectedWaterBodyId && { waterBodyId: selectedWaterBodyId }),
       };
       const updated = editingSpotId
         ? spots.map((s) => s.id === editingSpotId ? spot : s)
@@ -575,7 +574,7 @@ function SpotsTab({ open }: { open: boolean }) {
       await setDoc(doc(db, 'config', 'spots'), { spots: updated });
       setSpots(updated);
       setNewSpot(null);
-      setSelectedLake('');
+      setSelectedWaterBodyId('');
       setSelectedStation('');
       setEditingSpotId(null);
       setShowAddForm(false);
@@ -709,15 +708,15 @@ function SpotsTab({ open }: { open: boolean }) {
             </div>
 
             <div>
-              <label className={labelClass}>Lac</label>
+              <label className={labelClass}>Plan d'eau</label>
               <select
-                value={selectedLake}
-                onChange={(e) => setSelectedLake(e.target.value)}
+                value={selectedWaterBodyId}
+                onChange={(e) => setSelectedWaterBodyId(e.target.value)}
                 className={inputClass}
               >
-                <option value="">Sélectionner un lac...</option>
-                {LAKES.map((l) => (
-                  <option key={l.value} value={l.value}>{l.label}</option>
+                <option value="">— Aucun —</option>
+                {[...waterBodies].sort((a, b) => a.name.localeCompare(b.name)).map((wb) => (
+                  <option key={wb.id} value={wb.id}>{wb.name}</option>
                 ))}
               </select>
             </div>
@@ -758,7 +757,7 @@ function SpotsTab({ open }: { open: boolean }) {
                 {adding ? 'Enregistrement...' : editingSpotId ? 'Enregistrer' : 'Ajouter le spot'}
               </button>
               <button
-                onClick={() => { setNewSpot(null); setSelectedLake(''); setSelectedStation(''); setValidationError(null); setEditingSpotId(null); setShowAddForm(false); }}
+                onClick={() => { setNewSpot(null); setSelectedWaterBodyId(''); setSelectedStation(''); setValidationError(null); setEditingSpotId(null); setShowAddForm(false); }}
                 className="px-4 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors text-sm"
               >
                 Annuler
@@ -787,7 +786,7 @@ function SpotsTab({ open }: { open: boolean }) {
                   {s.name}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                  {LAKES.find((l) => l.value === s.lake)?.label ?? s.lake} · NPA {s.npa} · {s.stationId}
+                  {waterBodies.find((wb) => wb.id === (s.waterBodyId ?? s.lake))?.name ?? 'Aucun plan d\'eau'} · NPA {s.npa} · {s.stationId}
                 </p>
               </div>
 
@@ -821,6 +820,356 @@ function SpotsTab({ open }: { open: boolean }) {
               )}
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Water Bodies Tab ---
+
+function WaterBodiesTab({ open }: { open: boolean }) {
+  const [waterBodies, setWaterBodies] = useState<WaterBody[]>([]);
+  const [spots, setSpots] = useState<SpotConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Add/edit mode
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Form fields
+  const [formName, setFormName] = useState('');
+  const [formType, setFormType] = useState<WaterBodyType>('lake');
+  const [formCountry, setFormCountry] = useState('CH');
+  const [formRegion, setFormRegion] = useState('');
+  const [formAlplakesId, setFormAlplakesId] = useState('');
+  const [formCenterLat, setFormCenterLat] = useState('');
+  const [formCenterLng, setFormCenterLng] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [wbSnap, spotsSnap] = await Promise.all([
+        getDocs(collection(db, 'waterBodies')),
+        getDoc(doc(db, 'config', 'spots')),
+      ]);
+      setWaterBodies(wbSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as WaterBody[]);
+      if (spotsSnap.exists()) {
+        setSpots(spotsSnap.data().spots as SpotConfig[]);
+      }
+    } catch {
+      setError('Impossible de charger les plans d\'eau.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) loadData();
+  }, [open, loadData]);
+
+  function spotCount(wbId: string): number {
+    return spots.filter((s) => (s.waterBodyId ?? s.lake) === wbId).length;
+  }
+
+  function resetForm() {
+    setFormName('');
+    setFormType('lake');
+    setFormCountry('CH');
+    setFormRegion('');
+    setFormAlplakesId('');
+    setFormCenterLat('');
+    setFormCenterLng('');
+    setValidationError(null);
+    setEditingId(null);
+    setShowAddForm(false);
+  }
+
+  function handleEdit(wb: WaterBody) {
+    setFormName(wb.name);
+    setFormType(wb.type);
+    setFormCountry(wb.country);
+    setFormRegion(wb.region ?? '');
+    setFormAlplakesId(wb.alplakesId ?? '');
+    setFormCenterLat(wb.center?.lat?.toString() ?? '');
+    setFormCenterLng(wb.center?.lng?.toString() ?? '');
+    setEditingId(wb.id);
+    setShowAddForm(true);
+    setValidationError(null);
+  }
+
+  function validate(): string | null {
+    if (!formName.trim()) return 'Le nom est requis.';
+    if (!formCountry.trim() || formCountry.trim().length !== 2) return 'Le pays doit être un code ISO à 2 caractères (ex. CH).';
+    // Check name uniqueness
+    const otherWbs = editingId ? waterBodies.filter((wb) => wb.id !== editingId) : waterBodies;
+    if (otherWbs.some((wb) => wb.name.toLowerCase() === formName.trim().toLowerCase())) {
+      return `Un plan d'eau nommé "${formName.trim()}" existe déjà.`;
+    }
+    return null;
+  }
+
+  async function handleSave() {
+    const err = validate();
+    if (err) {
+      setValidationError(err);
+      return;
+    }
+    setSaving(true);
+    setValidationError(null);
+    try {
+      const id = editingId ?? formName.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const centerLat = parseFloat(formCenterLat);
+      const centerLng = parseFloat(formCenterLng);
+      const data: Record<string, unknown> = {
+        name: formName.trim(),
+        type: formType,
+        country: formCountry.trim().toUpperCase(),
+        updatedAt: serverTimestamp(),
+      };
+      if (formRegion.trim()) data.region = formRegion.trim();
+      if (formAlplakesId.trim()) data.alplakesId = formAlplakesId.trim();
+      if (!isNaN(centerLat) && !isNaN(centerLng)) {
+        data.center = { lat: centerLat, lng: centerLng };
+      }
+      if (!editingId) {
+        data.createdAt = serverTimestamp();
+      }
+      await setDoc(doc(db, 'waterBodies', id), data, { merge: editingId ? true : false });
+      await loadData();
+      resetForm();
+    } catch {
+      setError(editingId ? 'Impossible de modifier le plan d\'eau.' : 'Impossible d\'ajouter le plan d\'eau.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(wbId: string) {
+    setDeletingId(wbId);
+    try {
+      await deleteDoc(doc(db, 'waterBodies', wbId));
+      await loadData();
+    } catch {
+      setError('Impossible de supprimer le plan d\'eau.');
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  }
+
+  if (loading) {
+    return <p className="text-sm text-slate-500 dark:text-slate-400">Chargement...</p>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <button onClick={loadData} className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Add form */}
+      <div className="space-y-3">
+        {!showAddForm ? (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="w-full py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700 transition-colors text-sm flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Ajouter un plan d'eau
+          </button>
+        ) : (
+          <div className="space-y-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600">
+            <div>
+              <label className={labelClass}>Nom *</label>
+              <input
+                type="text"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder='Ex. "Lac Léman"'
+                className={inputClass}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>Type *</label>
+                <select
+                  value={formType}
+                  onChange={(e) => setFormType(e.target.value as WaterBodyType)}
+                  className={inputClass}
+                >
+                  {(Object.entries(WATER_BODY_TYPE_LABELS) as [WaterBodyType, string][]).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Pays *</label>
+                <input
+                  type="text"
+                  value={formCountry}
+                  onChange={(e) => setFormCountry(e.target.value)}
+                  placeholder="CH"
+                  maxLength={2}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelClass}>Région</label>
+              <input
+                type="text"
+                value={formRegion}
+                onChange={(e) => setFormRegion(e.target.value)}
+                placeholder='Ex. "Vaud"'
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>Identifiant Alplakes</label>
+              <input
+                type="text"
+                value={formAlplakesId}
+                onChange={(e) => setFormAlplakesId(e.target.value)}
+                placeholder='Ex. "geneva"'
+                className={inputClass}
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Laisser vide si pas de données de température disponibles
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>Centre — Latitude</label>
+                <input
+                  type="text"
+                  value={formCenterLat}
+                  onChange={(e) => setFormCenterLat(e.target.value)}
+                  placeholder="46.45"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Centre — Longitude</label>
+                <input
+                  type="text"
+                  value={formCenterLng}
+                  onChange={(e) => setFormCenterLng(e.target.value)}
+                  placeholder="6.55"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            {validationError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{validationError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700 transition-colors disabled:opacity-50 text-sm"
+              >
+                {saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Ajouter'}
+              </button>
+              <button
+                onClick={resetForm}
+                className="px-4 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors text-sm"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* List */}
+      <div className="space-y-2">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {waterBodies.length} plan{waterBodies.length > 1 ? 's' : ''} d'eau configuré{waterBodies.length > 1 ? 's' : ''}
+        </p>
+
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {[...waterBodies].sort((a, b) => a.name.localeCompare(b.name)).map((wb) => {
+            const count = spotCount(wb.id);
+            return (
+              <div
+                key={wb.id}
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <div className="min-w-0 flex-1" onClick={() => handleEdit(wb)}>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                    {wb.name}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {WATER_BODY_TYPE_LABELS[wb.type]} · {wb.country}
+                    {wb.alplakesId ? ` · Alplakes: ${wb.alplakesId}` : ''}
+                    {` · ${count} spot${count > 1 ? 's' : ''}`}
+                  </p>
+                </div>
+
+                {count > 0 ? (
+                  <span
+                    className="p-1 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                    title={`Associé à ${count} spot${count > 1 ? 's' : ''}. Dissociez-les d'abord.`}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    </svg>
+                  </span>
+                ) : confirmDeleteId === wb.id ? (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => handleDelete(wb.id)}
+                      disabled={deletingId === wb.id}
+                      className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {deletingId === wb.id ? '...' : 'Oui'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="px-2 py-1 text-xs rounded bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500"
+                    >
+                      Non
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteId(wb.id)}
+                    className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                    title="Supprimer"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

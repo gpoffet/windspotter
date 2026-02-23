@@ -7,7 +7,7 @@
  * Run:   cd functions && npm run seed
  */
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -31,6 +31,23 @@ const db = getFirestore();
 async function seed() {
   console.log('Seeding Firestore config documents...');
 
+  // waterBodies
+  const waterBodies = [
+    { id: 'geneva', name: 'Lac Léman', type: 'lake', alplakesId: 'geneva', center: { lat: 46.45, lng: 6.55 }, country: 'CH', region: 'Vaud' },
+    { id: 'neuchatel', name: 'Lac de Neuchâtel', type: 'lake', alplakesId: 'neuchatel', center: { lat: 46.90, lng: 6.85 }, country: 'CH', region: 'Neuchâtel' },
+    { id: 'joux', name: 'Lac de Joux', type: 'lake', alplakesId: 'joux', center: { lat: 46.63, lng: 6.28 }, country: 'CH', region: 'Vaud' },
+    { id: 'bret', name: 'Lac de Bret', type: 'lake', alplakesId: 'bret', center: { lat: 46.53, lng: 6.79 }, country: 'CH', region: 'Vaud' },
+  ];
+  for (const wb of waterBodies) {
+    const { id, ...data } = wb;
+    await db.doc(`waterBodies/${id}`).set({
+      ...data,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  console.log('  ✓ waterBodies');
+
   // config/spots
   await db.doc('config/spots').set({
     spots: [
@@ -44,6 +61,7 @@ async function seed() {
         lon: 6.6856,
         lake: 'geneva',
         alplakesKey: 'geneva',
+        waterBodyId: 'geneva',
       },
       {
         id: 'saint-prex',
@@ -55,6 +73,7 @@ async function seed() {
         lon: 6.4483,
         lake: 'geneva',
         alplakesKey: 'geneva',
+        waterBodyId: 'geneva',
       },
       {
         id: 'lac-de-joux',
@@ -66,6 +85,7 @@ async function seed() {
         lon: 6.32,
         lake: 'joux',
         alplakesKey: 'joux',
+        waterBodyId: 'joux',
       },
       {
         id: 'yvonand',
@@ -77,6 +97,7 @@ async function seed() {
         lon: 6.74,
         lake: 'neuchatel',
         alplakesKey: 'neuchatel',
+        waterBodyId: 'neuchatel',
       },
       {
         id: 'concise',
@@ -88,6 +109,7 @@ async function seed() {
         lon: 6.73,
         lake: 'neuchatel',
         alplakesKey: 'neuchatel',
+        waterBodyId: 'neuchatel',
       },
       {
         id: 'lac-de-bret',
@@ -99,6 +121,7 @@ async function seed() {
         lon: 6.75,
         lake: 'bret',
         alplakesKey: 'bret',
+        waterBodyId: 'bret',
       },
     ],
   });

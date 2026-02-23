@@ -100,9 +100,11 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
               );
             })()}
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {lakeName(spot.lake)}
-          </p>
+          {(spot.waterBodyName || spot.lake) && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {spot.waterBodyName ?? lakeName(spot.lake)}
+            </p>
+          )}
         </div>
         {spot.waterTemp.current !== null && (
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10">

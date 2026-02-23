@@ -1,3 +1,19 @@
+// --- Water body types ---
+
+export type WaterBodyType = 'lake' | 'sea' | 'ocean' | 'river' | 'quarry_lake' | 'pond' | 'other';
+
+export interface WaterBody {
+  id: string;
+  name: string;
+  type: WaterBodyType;
+  alplakesId?: string;
+  center?: { lat: number; lng: number };
+  country: string;
+  region?: string;
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+}
+
 // --- Firestore config documents ---
 
 export interface SpotConfig {
@@ -10,6 +26,7 @@ export interface SpotConfig {
   lon: number;
   lake: string;
   alplakesKey: string;
+  waterBodyId?: string;
 }
 
 export interface NavigabilityConfig {
@@ -62,6 +79,7 @@ export interface SpotForecast {
   lat: number;
   lon: number;
   lake: string;
+  waterBodyName?: string;
   waterTemp: WaterTemp;
   days: DayForecast[];
 }
