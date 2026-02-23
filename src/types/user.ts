@@ -8,6 +8,7 @@ export interface UserPreferences {
   forecastDays: number;
   selectedSpots?: string[];
   themePreference?: ThemePreference;
+  favoriteSpots?: string[];
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {

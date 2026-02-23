@@ -1,5 +1,6 @@
 import type { SpotForecast, NavigabilityConfig, NavigableSlot, CurrentWeather } from '../types/forecast';
 import { DayForecast } from './DayForecast';
+import { StarButton } from './StarButton';
 import { dayLabel, lakeName } from '../utils/format';
 
 interface SpotCardProps {
@@ -12,6 +13,8 @@ interface SpotCardProps {
   isExpanded: boolean;
   onToggle: () => void;
   bestSlot: NavigableSlot | null;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
 }
 
 /** SMN station metadata for tooltip display */
@@ -63,7 +66,7 @@ function Chevron({ expanded }: { expanded: boolean }) {
   );
 }
 
-export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays, isExpanded, onToggle, bestSlot }: SpotCardProps) {
+export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays, isExpanded, onToggle, bestSlot, isFavorite, onToggleFavorite }: SpotCardProps) {
   // Show today + future days only
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -97,6 +100,9 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
               : 'bg-slate-300 dark:bg-slate-600'
           }`}
         />
+
+        {/* Favorite star */}
+        <StarButton active={isFavorite} onClick={onToggleFavorite} />
 
         {/* Spot name + lake */}
         <div className="flex-1 min-w-0">

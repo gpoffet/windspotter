@@ -5,6 +5,7 @@ import { useCurrentWeather } from './hooks/useCurrentWeather';
 import { useEffectiveConfig } from './hooks/useEffectiveConfig';
 import { useAuth } from './contexts/AuthContext';
 import { useTheme } from './hooks/useTheme';
+import { useFavorites } from './hooks/useFavorites';
 import { Header } from './components/Header';
 import { SpotCard, SpotCardSkeleton } from './components/SpotCard';
 import { ViewToggle } from './components/ViewToggle';
@@ -46,8 +47,10 @@ function App() {
   useTheme(preferences?.themePreference);
   const forecastDays = preferences?.forecastDays ?? 2;
   const [showAuthFromBanner, setShowAuthFromBanner] = useState(false);
+  const [showAuthFromFavorite, setShowAuthFromFavorite] = useState(false);
   const [showSettingsFromBanner, setShowSettingsFromBanner] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   // Accordion state: which spots are expanded (spotPointId → boolean)
   const [expandedSpots, setExpandedSpots] = useState<Record<string, boolean>>({});
@@ -165,14 +168,23 @@ function App() {
     return Math.ceil(max / 10) * 10;
   }, [enrichedSpots]);
 
-  // Split visible spots into navigable / non-navigable, alphabetical within each
+  // Split visible spots into navigable / non-navigable, favorites first then alphabetical
+  const favThenAlpha = useCallback(
+    (a: SpotForecast, b: SpotForecast) => {
+      const aFav = isFavorite(a.pointId) ? 0 : 1;
+      const bFav = isFavorite(b.pointId) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
+      return a.name.localeCompare(b.name, 'fr');
+    },
+    [isFavorite],
+  );
   const navigableSpots = useMemo(
-    () => [...visibleSpots].filter((s) => isSpotNavigable(s, forecastDays)).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
-    [visibleSpots, forecastDays],
+    () => [...visibleSpots].filter((s) => isSpotNavigable(s, forecastDays)).sort(favThenAlpha),
+    [visibleSpots, forecastDays, favThenAlpha],
   );
   const nonNavigableSpots = useMemo(
-    () => [...visibleSpots].filter((s) => !isSpotNavigable(s, forecastDays)).sort((a, b) => a.name.localeCompare(b.name, 'fr')),
-    [visibleSpots, forecastDays],
+    () => [...visibleSpots].filter((s) => !isSpotNavigable(s, forecastDays)).sort(favThenAlpha),
+    [visibleSpots, forecastDays, favThenAlpha],
   );
 
   return (
@@ -206,6 +218,12 @@ function App() {
           setShowAuthFromBanner(false);
           setShowSettingsFromBanner(true);
         }}
+      />
+      <AuthModal
+        open={showAuthFromFavorite}
+        onClose={() => setShowAuthFromFavorite(false)}
+        initialView="signup"
+        onAuthenticated={() => setShowAuthFromFavorite(false)}
       />
       <SettingsModal
         open={showSettingsFromBanner}
@@ -303,6 +321,8 @@ function App() {
                         isExpanded={!!expandedSpots[spot.pointId]}
                         onToggle={() => toggleSpot(spot.pointId)}
                         bestSlot={getBestSlot(spot, forecastDays)}
+                        isFavorite={isFavorite(spot.pointId)}
+                        onToggleFavorite={() => toggleFavorite(spot.pointId, () => setShowAuthFromFavorite(true))}
                       />
                     ))}
                   </div>
@@ -338,6 +358,8 @@ function App() {
                         isExpanded={!!expandedSpots[spot.pointId]}
                         onToggle={() => toggleSpot(spot.pointId)}
                         bestSlot={getBestSlot(spot, forecastDays)}
+                        isFavorite={isFavorite(spot.pointId)}
+                        onToggleFavorite={() => toggleFavorite(spot.pointId, () => setShowAuthFromFavorite(true))}
                       />
                     ))}
                   </div>
