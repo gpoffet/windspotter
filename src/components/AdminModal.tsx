@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
 import { Modal } from './Modal';
 import { SpotLocationPicker, type SearchResult } from './SpotLocationPicker';
 import type { NavigabilityConfig, SpotConfig, WaterBody, WaterBodyType } from '../types/forecast';
+import { findNearestAlplakesLake } from '../data/alplakesLakes';
 
 type Tab = 'settings' | 'users' | 'spots' | 'waterBodies';
 
@@ -42,6 +43,15 @@ const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none text-sm';
 
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1';
+
+const flashRingClass = 'ring-2 ring-green-500 dark:ring-green-400';
+
+interface NominatimResult {
+  display_name: string;
+  lat: string;
+  lon: string;
+  type: string;
+}
 
 export function AdminModal({ open, onClose }: AdminModalProps) {
   const [tab, setTab] = useState<Tab>('settings');
@@ -851,6 +861,24 @@ function WaterBodiesTab({ open }: { open: boolean }) {
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Nominatim search state
+  const [nominatimResults, setNominatimResults] = useState<NominatimResult[]>([]);
+  const [nominatimLoading, setNominatimLoading] = useState(false);
+  const [nominatimError, setNominatimError] = useState<string | null>(null);
+
+  // Flash highlight state
+  const [flashLat, setFlashLat] = useState(false);
+  const [flashLng, setFlashLng] = useState(false);
+  const [flashAlplakesId, setFlashAlplakesId] = useState(false);
+
+  // Alplakes nearest lake suggestion (recalculated when lat/lng change)
+  const alplakesSuggestion = useMemo(() => {
+    const lat = parseFloat(formCenterLat);
+    const lng = parseFloat(formCenterLng);
+    if (isNaN(lat) || isNaN(lng)) return null;
+    return findNearestAlplakesLake(lat, lng);
+  }, [formCenterLat, formCenterLng]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -889,6 +917,12 @@ function WaterBodiesTab({ open }: { open: boolean }) {
     setValidationError(null);
     setEditingId(null);
     setShowAddForm(false);
+    setNominatimResults([]);
+    setNominatimLoading(false);
+    setNominatimError(null);
+    setFlashLat(false);
+    setFlashLng(false);
+    setFlashAlplakesId(false);
   }
 
   function handleEdit(wb: WaterBody) {
@@ -902,6 +936,60 @@ function WaterBodiesTab({ open }: { open: boolean }) {
     setEditingId(wb.id);
     setShowAddForm(true);
     setValidationError(null);
+    setNominatimResults([]);
+    setNominatimError(null);
+  }
+
+  // --- Nominatim & Alplakes helpers ---
+
+  function triggerFlash(setter: (v: boolean) => void) {
+    setter(true);
+    setTimeout(() => setter(false), 1500);
+  }
+
+  async function handleNominatimSearch() {
+    const q = formName.trim();
+    if (q.length < 3) return;
+
+    setNominatimLoading(true);
+    setNominatimError(null);
+    setNominatimResults([]);
+
+    try {
+      const url =
+        `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(q)}&format=json&limit=5&accept-language=fr`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'WindSpotter/1.0 (contact@windspotter.app)' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: NominatimResult[] = await res.json();
+      if (data.length === 0) {
+        setNominatimError('Aucun résultat trouvé. Essayez un autre nom ou saisissez les coordonnées manuellement.');
+      } else {
+        setNominatimResults(data);
+      }
+    } catch {
+      setNominatimError('Erreur lors de la recherche. Réessayez.');
+    } finally {
+      setNominatimLoading(false);
+    }
+  }
+
+  function handleSelectNominatimResult(result: NominatimResult) {
+    setFormCenterLat(result.lat);
+    setFormCenterLng(result.lon);
+    setNominatimResults([]);
+    setNominatimError(null);
+    triggerFlash(setFlashLat);
+    triggerFlash(setFlashLng);
+  }
+
+  function handleApplyAlplakesSuggestion() {
+    if (alplakesSuggestion) {
+      setFormAlplakesId(alplakesSuggestion.lake.key);
+      triggerFlash(setFlashAlplakesId);
+    }
   }
 
   function validate(): string | null {
@@ -1051,34 +1139,122 @@ function WaterBodiesTab({ open }: { open: boolean }) {
                 value={formAlplakesId}
                 onChange={(e) => setFormAlplakesId(e.target.value)}
                 placeholder='Ex. "geneva"'
-                className={inputClass}
+                className={`${inputClass} transition-shadow duration-500 ${flashAlplakesId ? flashRingClass : ''}`}
               />
-              <p className="mt-1 text-xs text-slate-400">
-                Laisser vide si pas de données de température disponibles
-              </p>
+
+              {/* Alplakes suggestion based on coordinates proximity */}
+              {alplakesSuggestion && (
+                <div className={`mt-1.5 flex items-center gap-2 text-xs ${
+                  alplakesSuggestion.distance < 10
+                    ? 'text-teal-600 dark:text-teal-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                }`}>
+                  {formAlplakesId === alplakesSuggestion.lake.key ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>
+                        {alplakesSuggestion.lake.name} ({alplakesSuggestion.distance.toFixed(1)} km)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1">
+                        {alplakesSuggestion.distance < 10 ? 'Suggestion :' : 'Possible :'}{' '}
+                        <strong>{alplakesSuggestion.lake.key}</strong> — {alplakesSuggestion.lake.name}{' '}
+                        ({alplakesSuggestion.distance.toFixed(1)} km)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleApplyAlplakesSuggestion}
+                        className="shrink-0 px-2 py-0.5 rounded bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                      >
+                        Utiliser
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!alplakesSuggestion && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Laisser vide si pas de données de température disponibles
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>Centre — Latitude</label>
-                <input
-                  type="text"
-                  value={formCenterLat}
-                  onChange={(e) => setFormCenterLat(e.target.value)}
-                  placeholder="46.45"
-                  className={inputClass}
-                />
+            {/* Coordinates section with Nominatim search */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Centre — Latitude</label>
+                  <input
+                    type="text"
+                    value={formCenterLat}
+                    onChange={(e) => setFormCenterLat(e.target.value)}
+                    placeholder="46.45"
+                    className={`${inputClass} transition-shadow duration-500 ${flashLat ? flashRingClass : ''}`}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Centre — Longitude</label>
+                  <input
+                    type="text"
+                    value={formCenterLng}
+                    onChange={(e) => setFormCenterLng(e.target.value)}
+                    placeholder="6.55"
+                    className={`${inputClass} transition-shadow duration-500 ${flashLng ? flashRingClass : ''}`}
+                  />
+                </div>
               </div>
-              <div>
-                <label className={labelClass}>Centre — Longitude</label>
-                <input
-                  type="text"
-                  value={formCenterLng}
-                  onChange={(e) => setFormCenterLng(e.target.value)}
-                  placeholder="6.55"
-                  className={inputClass}
-                />
-              </div>
+
+              <button
+                type="button"
+                onClick={handleNominatimSearch}
+                disabled={formName.trim().length < 3 || nominatimLoading}
+                className="w-full py-2 rounded-lg border border-teal-600 dark:border-teal-500 text-teal-600 dark:text-teal-400 font-medium text-sm hover:bg-teal-50 dark:hover:bg-teal-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {nominatimLoading ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                    </svg>
+                    Recherche en cours...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    Rechercher les coordonnées
+                  </>
+                )}
+              </button>
+
+              {nominatimError && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">{nominatimError}</p>
+              )}
+
+              {nominatimResults.length > 0 && (
+                <div className="rounded-lg border border-slate-200 dark:border-slate-600 divide-y divide-slate-200 dark:divide-slate-600 overflow-hidden">
+                  {nominatimResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 bg-white dark:bg-slate-700">
+                      <p className="text-xs text-slate-700 dark:text-slate-300 truncate flex-1" title={r.display_name}>
+                        {r.display_name}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectNominatimResult(r)}
+                        className="shrink-0 px-2 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                      >
+                        Utiliser
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {validationError && (
