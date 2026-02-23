@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -47,6 +47,11 @@ export function AuthModal({ open, onClose, onAuthenticated, initialView = 'login
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Sync internal view when the modal opens with a different initialView
+  useEffect(() => {
+    if (open) setView(initialView);
+  }, [open, initialView]);
 
   function resetForm() {
     setEmail('');
