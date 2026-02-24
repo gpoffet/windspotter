@@ -86,7 +86,7 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
         onClick={onToggle}
         aria-expanded={isExpanded}
         aria-controls={cardId}
-        className="w-full text-left px-4 py-3 flex items-center gap-3 cursor-pointer select-none hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors rounded-xl"
+        className="w-full text-left px-4 py-3 flex items-center gap-3 cursor-pointer select-none md:hover:bg-slate-50 md:dark:hover:bg-slate-700/50 transition-colors rounded-xl"
       >
         {/* Navigability dot */}
         <span
