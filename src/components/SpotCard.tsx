@@ -144,7 +144,7 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
 
         {/* Water temp badge */}
         {spot.waterTemp.current !== null && (
-          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-sm font-semibold text-blue-600 dark:text-blue-400 shrink-0">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-sm font-semibold text-blue-600 dark:text-blue-400 shrink-0">
             🌊 {spot.waterTemp.current}°C
           </span>
         )}
