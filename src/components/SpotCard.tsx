@@ -116,7 +116,7 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
                 : undefined;
               return (
               <span
-                className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0"
+                className="hidden sm:flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0"
                 title={tooltip}
               >
                 {currentWeather.windDir !== null && (
@@ -148,9 +148,9 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
           </span>
         )}
 
-        {/* Water temp badge */}
+        {/* Water temp badge — hidden on mobile, shown in sub-bar */}
         {spot.waterTemp.current !== null && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-sm font-semibold text-blue-600 dark:text-blue-400 shrink-0">
+          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-sm font-semibold text-blue-600 dark:text-blue-400 shrink-0">
             🌊 {spot.waterTemp.current}°C
           </span>
         )}
@@ -175,6 +175,41 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
         {/* Chevron */}
         <Chevron expanded={isExpanded} />
       </button>
+
+      {/* Mobile-only: current weather + water temp bar */}
+      {(currentWeather?.windSpeed !== null || spot.waterTemp.current !== null) && (
+        <div className="sm:hidden flex items-center gap-3 px-4 pb-2 -mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {currentWeather && currentWeather.windSpeed !== null && (() => {
+            const station = stationId ? STATIONS[stationId] : null;
+            const dist = station
+              ? Math.round(distanceKm(spot.lat, spot.lon, station.lat, station.lon))
+              : null;
+            const tooltip = station
+              ? `Station ${station.name} (${station.location}) — ~${dist} km`
+              : undefined;
+            return (
+              <span className="flex items-center gap-1" title={tooltip}>
+                {currentWeather.windDir !== null && (
+                  <WindArrow dir={currentWeather.windDir} />
+                )}
+                <span className="font-medium">{Math.round(currentWeather.windSpeed)}</span>
+                <span className="text-[10px]">km/h</span>
+                {currentWeather.temp !== null && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">|</span>
+                    <span className="font-medium">{currentWeather.temp.toFixed(1)}°</span>
+                  </>
+                )}
+              </span>
+            );
+          })()}
+          {spot.waterTemp.current !== null && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-sm font-semibold text-blue-600 dark:text-blue-400">
+              🌊 {spot.waterTemp.current}°C
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Webcam modal */}
       {hasWebcams && (
