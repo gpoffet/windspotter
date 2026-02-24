@@ -6,6 +6,7 @@ import { Modal } from './Modal';
 import { SpotLocationPicker, type SearchResult } from './SpotLocationPicker';
 import type { NavigabilityConfig, SpotConfig, WaterBody, WaterBodyType } from '../types/forecast';
 import { findNearestAlplakesLake } from '../data/alplakesLakes';
+import { type SmnStation, SMN_STATIONS_FALLBACK, fetchSmnStations } from '../utils/smnStations';
 
 type Tab = 'settings' | 'users' | 'spots' | 'waterBodies';
 
@@ -393,16 +394,6 @@ function UsersTab({ open }: { open: boolean }) {
 
 // --- Spots Tab ---
 
-const SMN_STATIONS: Record<string, { name: string; location: string; lat: number; lon: number }> = {
-  PUY: { name: 'Pully', location: 'Pully, VD', lat: 46.5106, lon: 6.6667 },
-  CGI: { name: 'Changins', location: 'Nyon, VD', lat: 46.4011, lon: 6.2277 },
-  CHB: { name: 'Les Charbonnières', location: 'Vallée de Joux, VD', lat: 46.6702, lon: 6.3124 },
-  PAY: { name: 'Payerne', location: 'Payerne, FR', lat: 46.8116, lon: 6.9426 },
-  MAH: { name: 'Mathod', location: 'Mathod, VD', lat: 46.7370, lon: 6.5680 },
-  NEU: { name: 'Neuchâtel', location: 'Neuchâtel, NE', lat: 47.0000, lon: 6.9500 },
-  FRE: { name: 'La Frêtaz', location: 'Bullet, VD', lat: 46.8406, lon: 6.5764 },
-  BIE: { name: 'Bière', location: 'Bière, VD', lat: 46.5249, lon: 6.3424 },
-};
 
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -415,10 +406,10 @@ function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function findNearestStation(lat: number, lon: number): string {
+function findNearestStation(lat: number, lon: number, stations: Record<string, SmnStation>): string {
   let nearest = '';
   let minDist = Infinity;
-  for (const [id, s] of Object.entries(SMN_STATIONS)) {
+  for (const [id, s] of Object.entries(stations)) {
     const d = distanceKm(lat, lon, s.lat, s.lon);
     if (d < minDist) { minDist = d; nearest = id; }
   }
@@ -432,6 +423,10 @@ function SpotsTab({ open }: { open: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // SMN stations (loaded dynamically, fallback to minimal list while loading)
+  const [smnStations, setSmnStations] = useState<Record<string, SmnStation>>(SMN_STATIONS_FALLBACK);
+  const [stationsLoading, setStationsLoading] = useState(false);
 
   // Add/edit spot mode
   const [showAddForm, setShowAddForm] = useState(false);
@@ -466,11 +461,20 @@ function SpotsTab({ open }: { open: boolean }) {
         setError('Impossible de charger les spots.');
         setLoading(false);
       });
+
+    // Load complete SMN station list (with wind data) from MeteoSuisse open data
+    setStationsLoading(true);
+    fetchSmnStations()
+      .then((stations) => {
+        if (Object.keys(stations).length > 0) setSmnStations(stations);
+      })
+      .catch(() => { /* Keep fallback stations on error */ })
+      .finally(() => setStationsLoading(false));
   }, [open]);
 
   function handleLocationChange(lat: number, lon: number) {
     setNewSpot((prev) => ({ ...(prev ?? {}), lat, lon }));
-    setSelectedStation(findNearestStation(lat, lon));
+    setSelectedStation(findNearestStation(lat, lon, smnStations));
     setValidationError(null);
 
     // Debounced reverse geocoding for NPA via MapServer identify
@@ -531,7 +535,7 @@ function SpotsTab({ open }: { open: boolean }) {
       npa: npa || undefined,
       pointId: npa ? `${npa}00` : '',
     });
-    setSelectedStation(findNearestStation(lat, lon));
+    setSelectedStation(findNearestStation(lat, lon, smnStations));
     setValidationError(null);
   }
 
@@ -732,23 +736,28 @@ function SpotsTab({ open }: { open: boolean }) {
             </div>
 
             <div>
-              <label className={labelClass}>Station SMN (conditions actuelles)</label>
+              <label className={labelClass}>
+                Station SMN (conditions actuelles)
+                {stationsLoading && (
+                  <span className="ml-2 text-xs font-normal text-slate-400 dark:text-slate-500">chargement…</span>
+                )}
+              </label>
               <select
                 value={selectedStation}
                 onChange={(e) => setSelectedStation(e.target.value)}
                 className={inputClass}
               >
                 <option value="">Sélectionner une station...</option>
-                {Object.entries(SMN_STATIONS)
+                {Object.entries(smnStations)
                   .map(([id, s]) => ({
                     id,
                     ...s,
                     dist: Math.round(distanceKm(newSpot.lat!, newSpot.lon!, s.lat, s.lon)),
                   }))
                   .sort((a, b) => a.dist - b.dist)
-                  .map(({ id, name, dist }) => (
+                  .map(({ id, name, location, dist }) => (
                     <option key={id} value={id}>
-                      {id} - {name} ({dist} km)
+                      {id} – {name} ({location}) — {dist} km
                     </option>
                   ))}
               </select>

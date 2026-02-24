@@ -2,6 +2,7 @@ import type { SpotForecast, NavigabilityConfig, NavigableSlot, CurrentWeather } 
 import { DayForecast } from './DayForecast';
 import { StarButton } from './StarButton';
 import { dayLabel, lakeName } from '../utils/format';
+import { SMN_STATIONS_FALLBACK as STATIONS } from '../utils/smnStations';
 
 interface SpotCardProps {
   spot: SpotForecast;
@@ -17,17 +18,6 @@ interface SpotCardProps {
   onToggleFavorite: () => void;
 }
 
-/** SMN station metadata for tooltip display */
-const STATIONS: Record<string, { name: string; location: string; lat: number; lon: number }> = {
-  PUY: { name: 'Pully', location: 'Pully, VD', lat: 46.5106, lon: 6.6667 },
-  CGI: { name: 'Changins', location: 'Nyon, VD', lat: 46.4011, lon: 6.2277 },
-  CHB: { name: 'Les Charbonnières', location: 'Vallée de Joux, VD', lat: 46.6702, lon: 6.3124 },
-  PAY: { name: 'Payerne', location: 'Payerne, FR', lat: 46.8116, lon: 6.9426 },
-  MAH: { name: 'Mathod', location: 'Mathod, VD', lat: 46.7370, lon: 6.5680 },
-  NEU: { name: 'Neuchâtel', location: 'Neuchâtel, NE', lat: 47.0000, lon: 6.9500 },
-  FRE: { name: 'La Frêtaz', location: 'Bullet, VD', lat: 46.8406, lon: 6.5764 },
-  BIE: { name: 'Bière', location: 'Bière, VD', lat: 46.5249, lon: 6.3424 },
-};
 
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
