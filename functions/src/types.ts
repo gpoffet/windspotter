@@ -14,6 +14,13 @@ export interface WaterBody {
   updatedAt: FirebaseFirestore.Timestamp;
 }
 
+// --- Webcam types ---
+
+export interface SpotWebcam {
+  webcamId: string;
+  title: string;
+}
+
 // --- Firestore config documents ---
 
 export interface SpotConfig {
@@ -27,6 +34,7 @@ export interface SpotConfig {
   lake: string;
   alplakesKey: string;
   waterBodyId?: string;
+  webcams?: SpotWebcam[];
 }
 
 export interface NavigabilityConfig {

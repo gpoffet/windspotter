@@ -370,6 +370,7 @@ function App() {
                         bestSlot={getBestSlot(spot, forecastDays)}
                         isFavorite={isFavorite(spot.pointId)}
                         onToggleFavorite={() => toggleFavorite(spot.pointId, () => promptAccountCreation('favorites'))}
+                        webcams={configByPointId.get(spot.pointId)?.webcams}
                       />
                     ))}
                   </div>
@@ -407,6 +408,7 @@ function App() {
                         bestSlot={getBestSlot(spot, forecastDays)}
                         isFavorite={isFavorite(spot.pointId)}
                         onToggleFavorite={() => toggleFavorite(spot.pointId, () => promptAccountCreation('favorites'))}
+                        webcams={configByPointId.get(spot.pointId)?.webcams}
                       />
                     ))}
                   </div>

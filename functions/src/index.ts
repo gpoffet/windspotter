@@ -18,6 +18,9 @@ export { listUsers, deleteUser } from './admin.js';
 // Notifications
 export { sendDailyNotifications, sendTestNotification } from './notifications.js';
 
+// Webcams
+export { searchWebcams, getWebcamPlayer } from './webcams.js';
+
 initializeApp();
 const db = getFirestore();
 

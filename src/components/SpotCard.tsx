@@ -1,6 +1,8 @@
-import type { SpotForecast, NavigabilityConfig, NavigableSlot, CurrentWeather } from '../types/forecast';
+import { useState } from 'react';
+import type { SpotForecast, NavigabilityConfig, NavigableSlot, CurrentWeather, SpotWebcam } from '../types/forecast';
 import { DayForecast } from './DayForecast';
 import { StarButton } from './StarButton';
+import { WebcamModal } from './WebcamModal';
 import { dayLabel, lakeName } from '../utils/format';
 import { SMN_STATIONS_FALLBACK as STATIONS } from '../utils/smnStations';
 
@@ -16,6 +18,7 @@ interface SpotCardProps {
   bestSlot: NavigableSlot | null;
   isFavorite: boolean;
   onToggleFavorite: () => void;
+  webcams?: SpotWebcam[];
 }
 
 
@@ -56,7 +59,10 @@ function Chevron({ expanded }: { expanded: boolean }) {
   );
 }
 
-export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays, isExpanded, onToggle, bestSlot, isFavorite, onToggleFavorite }: SpotCardProps) {
+export function SpotCard({ spot, navigability, yAxisMax, currentWeather, stationId, forecastDays, isExpanded, onToggle, bestSlot, isFavorite, onToggleFavorite, webcams }: SpotCardProps) {
+  const [webcamOpen, setWebcamOpen] = useState(false);
+  const hasWebcams = webcams && webcams.length > 0;
+
   // Show today + future days only
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -149,9 +155,36 @@ export function SpotCard({ spot, navigability, yAxisMax, currentWeather, station
           </span>
         )}
 
+        {/* Webcam button */}
+        {hasWebcams && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); setWebcamOpen(true); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setWebcamOpen(true); } }}
+            className="shrink-0 p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            title="Webcams"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 7l-7 5 7 5V7z" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            </svg>
+          </span>
+        )}
+
         {/* Chevron */}
         <Chevron expanded={isExpanded} />
       </button>
+
+      {/* Webcam modal */}
+      {hasWebcams && (
+        <WebcamModal
+          open={webcamOpen}
+          onClose={() => setWebcamOpen(false)}
+          spotName={spot.name}
+          webcamIds={webcams!.map((w) => w.webcamId)}
+        />
+      )}
 
       {/* Collapsible body */}
       <div

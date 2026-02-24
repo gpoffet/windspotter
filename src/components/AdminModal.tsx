@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../config/firebase';
 import { Modal } from './Modal';
 import { SpotLocationPicker, type SearchResult } from './SpotLocationPicker';
-import type { NavigabilityConfig, SpotConfig, WaterBody, WaterBodyType } from '../types/forecast';
+import type { NavigabilityConfig, SpotConfig, SpotWebcam, WaterBody, WaterBodyType } from '../types/forecast';
 import { findNearestAlplakesLake } from '../data/alplakesLakes';
 import { type SmnStation, SMN_STATIONS_FALLBACK, fetchSmnStations } from '../utils/smnStations';
 
@@ -439,6 +439,22 @@ function SpotsTab({ open }: { open: boolean }) {
   const [adding, setAdding] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Webcam picker state
+  const [selectedWebcams, setSelectedWebcams] = useState<SpotWebcam[]>([]);
+  const [webcamSearchResults, setWebcamSearchResults] = useState<Array<{
+    webcamId: string;
+    title: string;
+    city: string;
+    latitude: number;
+    longitude: number;
+    thumbnailUrl: string;
+    previewUrl: string;
+    categories: string[];
+    hasLive: boolean;
+  }> | null>(null);
+  const [webcamSearching, setWebcamSearching] = useState(false);
+  const [webcamError, setWebcamError] = useState<string | null>(null);
+
   // Reverse geocoding debounce
   const reverseGeoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -543,6 +559,9 @@ function SpotsTab({ open }: { open: boolean }) {
     setNewSpot({ ...spot });
     setSelectedWaterBodyId(spot.waterBodyId ?? spot.lake ?? '');
     setSelectedStation(spot.stationId);
+    setSelectedWebcams(spot.webcams ?? []);
+    setWebcamSearchResults(null);
+    setWebcamError(null);
     setEditingSpotId(spot.id);
     setShowAddForm(true);
     setValidationError(null);
@@ -581,6 +600,7 @@ function SpotsTab({ open }: { open: boolean }) {
         lake: selectedWaterBodyId || '',
         alplakesKey: selectedWaterBodyId || '',
         ...(selectedWaterBodyId && { waterBodyId: selectedWaterBodyId }),
+        ...(selectedWebcams.length > 0 && { webcams: selectedWebcams }),
       };
       const updated = editingSpotId
         ? spots.map((s) => s.id === editingSpotId ? spot : s)
@@ -590,6 +610,9 @@ function SpotsTab({ open }: { open: boolean }) {
       setNewSpot(null);
       setSelectedWaterBodyId('');
       setSelectedStation('');
+      setSelectedWebcams([]);
+      setWebcamSearchResults(null);
+      setWebcamError(null);
       setEditingSpotId(null);
       setShowAddForm(false);
       // Trigger forecast refresh so changes appear on the main page
@@ -763,6 +786,133 @@ function SpotsTab({ open }: { open: boolean }) {
               </select>
             </div>
 
+            {/* Webcam picker */}
+            <div className="space-y-2">
+              <label className={labelClass}>Webcams</label>
+
+              {/* Already selected webcams */}
+              {selectedWebcams.length > 0 && (
+                <div className="space-y-1">
+                  {selectedWebcams.map((w) => (
+                    <div key={w.webcamId} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-500/10 border border-teal-200 dark:border-teal-500/30">
+                      <span className="text-sm text-teal-800 dark:text-teal-300 truncate">{w.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedWebcams((prev) => prev.filter((wc) => wc.webcamId !== w.webcamId))}
+                        className="shrink-0 p-0.5 rounded text-teal-600 dark:text-teal-400 hover:text-red-600 dark:hover:text-red-400"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Search button */}
+              <button
+                type="button"
+                disabled={webcamSearching || selectedWebcams.length >= 3}
+                onClick={async () => {
+                  if (!newSpot?.lat || !newSpot?.lon) return;
+                  setWebcamSearching(true);
+                  setWebcamError(null);
+                  try {
+                    const fn = httpsCallable<
+                      { latitude: number; longitude: number; radiusKm?: number },
+                      { webcams: typeof webcamSearchResults }
+                    >(functions, 'searchWebcams');
+                    const result = await fn({ latitude: newSpot.lat, longitude: newSpot.lon });
+                    setWebcamSearchResults(result.data.webcams ?? []);
+                  } catch {
+                    setWebcamError('Impossible de rechercher les webcams.');
+                  } finally {
+                    setWebcamSearching(false);
+                  }
+                }}
+                className="w-full py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <svg className={`w-4 h-4 ${webcamSearching ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {webcamSearching ? (
+                    <>
+                      <circle className="opacity-25" cx="12" cy="12" r="10" />
+                      <path className="opacity-75" d="M4 12a8 8 0 018-8" />
+                    </>
+                  ) : (
+                    <>
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </>
+                  )}
+                </svg>
+                {webcamSearching
+                  ? 'Recherche...'
+                  : selectedWebcams.length >= 3
+                    ? 'Maximum 3 webcams'
+                    : 'Rechercher des webcams à proximité'}
+              </button>
+
+              {webcamError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{webcamError}</p>
+              )}
+
+              {/* Search results */}
+              {webcamSearchResults && webcamSearchResults.length > 0 && (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {webcamSearchResults.map((w) => {
+                    const isSelected = selectedWebcams.some((sw) => sw.webcamId === w.webcamId);
+                    const isDisabled = !isSelected && selectedWebcams.length >= 3;
+                    return (
+                      <label
+                        key={w.webcamId}
+                        className={`flex items-start gap-2.5 px-2.5 py-2 rounded-lg border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'border-teal-300 dark:border-teal-500/50 bg-teal-50/50 dark:bg-teal-500/5'
+                            : 'border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={isDisabled}
+                          onChange={() => {
+                            if (isSelected) {
+                              setSelectedWebcams((prev) => prev.filter((sw) => sw.webcamId !== w.webcamId));
+                            } else {
+                              setSelectedWebcams((prev) => [...prev, { webcamId: w.webcamId, title: w.title }]);
+                            }
+                          }}
+                          className="mt-1 shrink-0 accent-teal-600"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{w.title}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                            {w.city}
+                            {w.categories.length > 0 && ` · ${w.categories.join(', ')}`}
+                          </p>
+                        </div>
+                        {w.thumbnailUrl && (
+                          <img
+                            src={w.thumbnailUrl}
+                            alt={w.title}
+                            className="shrink-0 w-16 h-12 rounded object-cover bg-slate-200 dark:bg-slate-600"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {webcamSearchResults && webcamSearchResults.length === 0 && (
+                <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-2">
+                  Aucune webcam trouvée à proximité
+                </p>
+              )}
+            </div>
+
             {validationError && (
               <p className="text-sm text-red-600 dark:text-red-400">{validationError}</p>
             )}
@@ -776,7 +926,7 @@ function SpotsTab({ open }: { open: boolean }) {
                 {adding ? 'Enregistrement...' : editingSpotId ? 'Enregistrer' : 'Ajouter le spot'}
               </button>
               <button
-                onClick={() => { setNewSpot(null); setSelectedWaterBodyId(''); setSelectedStation(''); setValidationError(null); setEditingSpotId(null); setShowAddForm(false); }}
+                onClick={() => { setNewSpot(null); setSelectedWaterBodyId(''); setSelectedStation(''); setSelectedWebcams([]); setWebcamSearchResults(null); setWebcamError(null); setValidationError(null); setEditingSpotId(null); setShowAddForm(false); }}
                 className="px-4 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors text-sm"
               >
                 Annuler
@@ -806,6 +956,9 @@ function SpotsTab({ open }: { open: boolean }) {
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                   {waterBodies.find((wb) => wb.id === (s.waterBodyId ?? s.lake))?.name ?? 'Aucun plan d\'eau'} · NPA {s.npa} · {s.stationId}
+                  {s.webcams && s.webcams.length > 0 && (
+                    <span className="ml-1 text-teal-600 dark:text-teal-400">· {s.webcams.length} webcam{s.webcams.length > 1 ? 's' : ''}</span>
+                  )}
                 </p>
               </div>
 
