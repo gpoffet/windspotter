@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -47,11 +47,40 @@ export function AuthModal({ open, onClose, onAuthenticated, initialView = 'login
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const onAuthenticatedRef = useRef(onAuthenticated);
+
+  useEffect(() => {
+    onAuthenticatedRef.current = onAuthenticated;
+  }, [onAuthenticated]);
 
   // Sync internal view when the modal opens with a different initialView
   useEffect(() => {
     if (open) setView(initialView);
   }, [open, initialView]);
+
+  // Poll email verification status every 3s while waiting
+  useEffect(() => {
+    if (view !== 'verify-email') return;
+    const interval = setInterval(async () => {
+      try {
+        await auth.currentUser?.reload();
+        if (auth.currentUser?.emailVerified) {
+          clearInterval(interval);
+          setView(initialView);
+          setEmail('');
+          setPassword('');
+          setFirstName('');
+          setLastName('');
+          setError(null);
+          setLoading(false);
+          onAuthenticatedRef.current();
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [view, initialView]);
 
   function resetForm() {
     setEmail('');
@@ -73,7 +102,12 @@ export function AuthModal({ open, onClose, onAuthenticated, initialView = 'login
     setError(null);
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      if (!cred.user.emailVerified) {
+        await sendEmailVerification(cred.user);
+        setView('verify-email');
+        return;
+      }
       resetForm();
       onAuthenticated();
     } catch (err: unknown) {
@@ -124,8 +158,29 @@ export function AuthModal({ open, onClose, onAuthenticated, initialView = 'login
   async function handleResendVerification() {
     if (!auth.currentUser) return;
     setLoading(true);
+    setError(null);
     try {
       await sendEmailVerification(auth.currentUser);
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code ?? '';
+      setError(firebaseErrorMessage(code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCheckVerification() {
+    if (!auth.currentUser) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await auth.currentUser.reload();
+      if (auth.currentUser.emailVerified) {
+        resetForm();
+        onAuthenticated();
+      } else {
+        setError("Votre email n'a pas encore été vérifié. Vérifiez votre boîte de réception.");
+      }
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? '';
       setError(firebaseErrorMessage(code));
@@ -274,20 +329,18 @@ export function AuthModal({ open, onClose, onAuthenticated, initialView = 'login
             Cliquez sur le lien dans l'email pour vérifier votre compte.
           </p>
           <button
+            onClick={handleCheckVerification}
+            disabled={loading}
+            className={primaryBtnClass}
+          >
+            {loading ? 'Vérification...' : 'J\'ai vérifié mon email'}
+          </button>
+          <button
             onClick={handleResendVerification}
             disabled={loading}
             className={linkClass}
           >
             Renvoyer l'email
-          </button>
-          <button
-            onClick={() => {
-              resetForm();
-              onAuthenticated();
-            }}
-            className={primaryBtnClass}
-          >
-            Continuer
           </button>
         </div>
       )}
